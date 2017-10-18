@@ -6,6 +6,14 @@
 
 config_t config;
 
+#define DEFAULT_INT(x, v) { \
+    if (x == -1) x = v;     \
+}
+
+#define DEFAULT_STR(x, v) { \
+    if (!x) x = strdup(v);  \
+}
+
 void get_config(config_t *config, char *cfg_file) {
 	cfg_opt_t opts[] = {
 		CFG_SIMPLE_STR("server_name",  &(config->server_name)),
@@ -22,9 +30,28 @@ void get_config(config_t *config, char *cfg_file) {
 		CFG_END()
 	};
 	cfg_t *cfg;
+    
+
+    // use sane defaults if not already set by cmdline parameters
+
+    DEFAULT_INT(config->port,     3689);
+    DEFAULT_INT(config->threads,  4);
+    DEFAULT_INT(config->timeout,  1800);
+    DEFAULT_INT(config->fullscan, 0);
+
+        // DAAPPER_DBFILE
+    DEFAULT_STR(config->dbfile, "/tmp/songs.db");
+        // DAAPPER_EXTFILE
+    DEFAULT_STR(config->extfile, "/usr/lib/sqlite3/closure.so");
+        // DAAPPER_ROOT
+    DEFAULT_STR(config->root, "/srv/music");
+        // DAAPPER_USER
+    DEFAULT_STR(config->userid, "nobody");
+        // LIBRARYNAME
+    DEFAULT_STR(config->library_name, "Library");
 
 	char *cfg_path = cfg_file ? cfg_file : "/etc/daapper.conf";
-
+    printf("Using config file '%s'\n", cfg_file);
 	setlocale(LC_MESSAGES, "");
 	setlocale(LC_CTYPE, "");
 

@@ -10,6 +10,7 @@
 #include <syslog.h>
 #include <sqlite3.h>
 #include <sys/stat.h>
+#include <getopt.h>
 #include "config.h"
 #include "dmap.h"
 #include "util.h"
@@ -36,30 +37,108 @@ static void main_cleanup(void *arg) {
     syslog(LOG_INFO, "main thread terminated.\n");
 }
 
+static const char option_string[]  = "DVc:d:s:p:t:T:";
+static struct option long_options[] = {
+    { "daemonize",          no_argument,       0,       'D' },
+    { "verbose",            no_argument,       0,       'V' },
+    { "config",             required_argument, 0,       'c' },
+    { "db-file",            required_argument, 0,       'd' },
+    { "share-directory",    required_argument, 0,       's' },
+    { "port",               required_argument, 0,       'p' },
+    { "threads",            required_argument, 0,       't' },
+    { "timeout",            required_argument, 0,       'T' },
+    { 0, 0, 0, 0 }
+};
+
+
 int main (int argc, char *argv[]) {
+    int flag_daemonize = 0;
+    int flag_verbose = 0;
+    char config_file[256] = "daapper.conf";
+    static config_t conf;
+    char hostname[255];
+    gethostname(hostname, 255);
+
+// empty config values.  if not set by cmdline args, then will be set by get_config()
+    conf.dbfile       = NULL;
+    conf.extfile      = NULL;
+    conf.port         = -1;
+    conf.threads      = -1;
+    conf.timeout      = -1;
+    conf.root         = NULL;
+    conf.userid       = NULL;
+    conf.fullscan     = -1;
+    conf.server_name  = hostname;
+    conf.library_name = NULL;
+
+// process cmdline args
+    while(1) {
+        int option_index = 0;
+        int c = getopt_long(argc, argv, option_string, long_options, &option_index);
+        if (c == -1) break;
+        switch(c) {
+            case 'D': flag_daemonize = 1;        
+                      break;
+            case 'V': flag_verbose = 1;
+                      break;
+            case 'c': {
+                          size_t len = strlen(optarg) + 1;
+                          if (len > 256) len = 256;
+                          strncpy(config_file, optarg, len);
+                      }
+                      break;
+            case 'd': {
+                          conf.dbfile = strdup(optarg);
+                      }
+                      break;
+            case 's': {
+                          conf.root = strdup(optarg);
+                      }
+                      break;
+            case 'p': {
+                          conf.port = atoi(optarg);
+                          if (conf.port == 0) {
+                              fprintf(stderr, "--port must be passed an integer.\n");
+                              exit(1);
+                          }
+                      }
+                      break;
+            case 't': {
+                          conf.threads = atoi(optarg);
+                          if (conf.threads == 0) {
+                              fprintf(stderr, "--threads must be passed an integer.\n");
+                              exit(1);
+                          }
+                      }
+                      break;
+            case 'T': {
+                          conf.timeout = atoi(optarg);
+                          if (conf.timeout == 0) {
+                              fprintf(stderr, "--timeout must be passed an integer.\n");
+                              exit(1);
+                          }
+                      }
+                      break;
+            default:
+                      exit(1);
+        }
+    }
+
     main_pid = pthread_self();
     int res;
     evbase_t *evbase;
     evhtp_t  *evhtp;
     app_parent parent;
-    static config_t conf;
-    char hostname[255];
-    gethostname(hostname, 255);
-// default values if unable to read configuration file
-    conf.dbfile       = strdup("${DAAPPER_DBFILE:-/tmp/songs3.db}");
-    conf.extfile      = strdup("${DAAPPER_EXTFILE:-/usr/lib/sqlite3/closure.so}");
-    conf.port         = 3689;
-    conf.threads      = 4;
-    conf.timeout      = 1800;
-    conf.root         = strdup("${DAAPPER_ROOT:-/srv/music}");
-    conf.userid       = strdup("${DAAPPER_USER:-nobody}");
-    conf.fullscan     = 0;
-    conf.server_name  = strdup(hostname);
-    conf.library_name = strdup("${USER:-User}'s Library");
-    get_config(&conf, "daap.conf");
+
+    get_config(&conf, config_file);
+
 // unix specific initialization in system.c
 // TBD windows version
-    daemonize(&conf, argv);
+    if (flag_daemonize)
+        daemonize(&conf, argv); 
+    else
+        staylocal(&conf, argv);
+
     assign_signal_handler();
     atexit(cleanup);
     int cleanup_pop_val;

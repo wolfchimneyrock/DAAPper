@@ -395,6 +395,7 @@ int db_open_database(app *aux, int flags) {
     ret = sqlite3_open_v2((aux->config)->dbfile, &aux->db, flags, NULL);
     if (ret) {
         syslog(LOG_ERR, "thread couldn't open database\n");
+        exit(1);
         return ret;
     } else
         syslog(LOG_INFO, "thread opened database \n");
@@ -404,6 +405,7 @@ int db_open_database(app *aux, int flags) {
             (aux->config)->extfile, NULL, &error);
     if (ret != SQLITE_OK) {
         syslog(LOG_ERR, "failed to load sqlite extension: %s.\n", error);
+        exit(1);
         return ret;
     }
 

@@ -17,16 +17,32 @@
 
 #define SUPERUSER (uid_t)0
 
-static char *pidfile_str;
 static int pidfile_fd;
+static char pidfile_str[256];
 
 volatile pthread_t main_pid, signal_pid, 
     watcher_pid, scanner_pid, writer_pid; 
 
+void staylocal(config_t *conf, char **argv) {
+    // don't daemonize - but write pid file and enable logging to stdout
+    snprintf(pidfile_str, 256, "/tmp/%u-daapper.pid", conf->port);
+    
+    pidfile_fd = open(pidfile_str, O_WRONLY | O_CREAT  | O_EXCL ,
+            S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH );
+    if (pidfile_fd < 0) {
+        perror("error creating pidfile: ");
+        exit(EXIT_FAILURE);
+    }    
+    char pid_str[10];
+    snprintf(pid_str, 10, "%d", getpid()); 
+    int ret = write(pidfile_fd, pid_str, strlen(pid_str) + 1);
+    openlog(NULL, LOG_PERROR, LOG_USER);
+    
+}
+
 void daemonize(config_t *conf, char **argv) {
     pid_t pid, sid;
     int ret;
-    pidfile_str = malloc(256);
     snprintf(pidfile_str, 256, "/tmp/%u-daapper.pid", conf->port);
     pidfile_fd = open(pidfile_str, O_RDONLY);
     if (pidfile_fd > 0) { 
@@ -45,7 +61,6 @@ void daemonize(config_t *conf, char **argv) {
                     prior);
             kill(prior, SIGTERM);
             close(pidfile_fd);
-            free(pidfile_str);     // possible memory leak
             sleep(2);              // wait...
             daemonize(conf, argv); // try again
             return;
@@ -103,14 +118,13 @@ void daemonize(config_t *conf, char **argv) {
 void cleanup() {
     close(pidfile_fd);
     remove(pidfile_str);
-    free(pidfile_str);
     syslog(LOG_INFO, "exiting.\n");
     closelog();
 }
 
 static void handle_signal(int sig) {
     syslog(LOG_INFO, "received signal %d - %s\n", sig, strsignal(sig));
-    if (sig == SIGKILL || sig == SIGTERM || sig == SIGSTOP) {
+    if (sig == SIGKILL || sig == SIGTERM || sig == SIGSTOP || sig == SIGINT) {
         syslog(LOG_INFO, "terminating...\n");
         // cancelling the signal thread will cause a graceful shutdown
         pthread_cancel(signal_pid);
