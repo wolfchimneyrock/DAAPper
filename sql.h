@@ -111,6 +111,8 @@ typedef enum r_type {
 typedef struct query_t {
     q_type   type;
     r_type   returns;
+    uint64_t created;
+    int      place;
     int     n_str, n_int;
     int     *intvals;
     char    **strvals;

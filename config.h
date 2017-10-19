@@ -6,6 +6,8 @@ typedef struct config_t {
 	int   threads;
 	int   fullscan;
     int   timeout;
+    int   buffercap;
+    int   verbose;
 	char *name;
 	char *root;
 	char *dbfile;

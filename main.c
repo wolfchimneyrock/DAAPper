@@ -37,7 +37,7 @@ static void main_cleanup(void *arg) {
     syslog(LOG_INFO, "main thread terminated.\n");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -47,13 +47,21 @@ static struct option long_options[] = {
     { "port",               required_argument, 0,       'p' },
     { "threads",            required_argument, 0,       't' },
     { "timeout",            required_argument, 0,       'T' },
+    { "buffer-capacity",    required_argument, 0,       'B' },
     { 0, 0, 0, 0 }
 };
+
+#define INTARG(a, desc) {                                               \
+      a = atoi(optarg);                                                 \
+      if (a == 0) {                                                     \
+          fprintf(stderr, "--%s must be passed an integer.\n", desc);   \
+          exit(1);                                                      \
+      }                                                                 \
+}
 
 
 int main (int argc, char *argv[]) {
     int flag_daemonize = 0;
-    int flag_verbose = 0;
     char config_file[256] = "daapper.conf";
     static config_t conf;
     char hostname[255];
@@ -65,6 +73,8 @@ int main (int argc, char *argv[]) {
     conf.port         = -1;
     conf.threads      = -1;
     conf.timeout      = -1;
+    conf.buffercap    = -1;
+    conf.verbose      = -1;
     conf.root         = NULL;
     conf.userid       = NULL;
     conf.fullscan     = -1;
@@ -79,7 +89,7 @@ int main (int argc, char *argv[]) {
         switch(c) {
             case 'D': flag_daemonize = 1;        
                       break;
-            case 'V': flag_verbose = 1;
+            case 'V': conf.verbose = 1;
                       break;
             case 'c': {
                           size_t len = strlen(optarg) + 1;
@@ -91,33 +101,15 @@ int main (int argc, char *argv[]) {
                           conf.dbfile = strdup(optarg);
                       }
                       break;
-            case 's': {
-                          conf.root = strdup(optarg);
-                      }
+            case 's': conf.root = strdup(optarg);
                       break;
-            case 'p': {
-                          conf.port = atoi(optarg);
-                          if (conf.port == 0) {
-                              fprintf(stderr, "--port must be passed an integer.\n");
-                              exit(1);
-                          }
-                      }
+            case 'p': INTARG(conf.port, "port");
                       break;
-            case 't': {
-                          conf.threads = atoi(optarg);
-                          if (conf.threads == 0) {
-                              fprintf(stderr, "--threads must be passed an integer.\n");
-                              exit(1);
-                          }
-                      }
+            case 't': INTARG(conf.threads, "threads");
                       break;
-            case 'T': {
-                          conf.timeout = atoi(optarg);
-                          if (conf.timeout == 0) {
-                              fprintf(stderr, "--timeout must be passed an integer.\n");
-                              exit(1);
-                          }
-                      }
+            case 'T': INTARG(conf.timeout, "timeout");
+                      break;
+            case 'B': INTARG(conf.buffercap, "buffer-capacity");
                       break;
             default:
                       exit(1);

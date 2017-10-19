@@ -49,6 +49,11 @@ int rb_isempty(RINGBUFFER *rb) {
     return rb->used == 0;
 }
 
+int rb_size(RINGBUFFER *rb) {
+    if (rb == NULL) return -1;
+    return rb->used;
+}
+
 int rb_pushback(RINGBUFFER *rb, void *data) {
     int ret;
     if (rb == NULL) return -1;

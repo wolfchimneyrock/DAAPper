@@ -23,7 +23,7 @@
 
 #define META_SCRATCH_SIZE    4096
 #define PATH_SCRATCH_SIZE    4096 
-#define BUFFER_CAPACITY      256
+#define BUFFER_CAPACITY      6
 
 volatile sig_atomic_t   scanner_active      = 0;
 static pthread_mutex_t  scanner_ready_mutex = PTHREAD_MUTEX_INITIALIZER;

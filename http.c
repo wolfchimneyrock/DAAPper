@@ -460,7 +460,7 @@ void res_item_list(evhtp_request_t *req, void *a) {
 static evhtp_res stream_item_finish_cb(evhtp_request_t *req, void *arg) {
     int fd = PTR_TO_INT(arg);
     syslog(LOG_INFO, "closed stream file [%d]\n", fd);
-    close(fd);
+    //close(fd);
     return EVHTP_RES_OK;
 }
 

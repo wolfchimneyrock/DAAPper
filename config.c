@@ -38,6 +38,8 @@ void get_config(config_t *config, char *cfg_file) {
     DEFAULT_INT(config->threads,  4);
     DEFAULT_INT(config->timeout,  1800);
     DEFAULT_INT(config->fullscan, 0);
+    DEFAULT_INT(config->buffercap, 100);
+    DEFAULT_INT(config->verbose,  0);
 
         // DAAPPER_DBFILE
     DEFAULT_STR(config->dbfile, "/tmp/songs.db");

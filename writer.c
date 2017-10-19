@@ -15,8 +15,6 @@
 #include "scratch.h"
 #include "system.h"
 
-#define BUFFER_CAPACITY 100
-
 volatile sig_atomic_t writer_active = 0;
 static int db_return_int;
 static char *db_return_str;
@@ -28,6 +26,10 @@ static pthread_mutex_t writer_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t db_status_mutex    = PTHREAD_MUTEX_INITIALIZER;
 static time_t db_updated;
 
+#define TIMESTAMP(t) \
+    (1000000 * t.tv_sec + t.tv_usec)
+
+
 time_t db_last_update_time() {
     time_t result;
     pthread_mutex_lock(&db_status_mutex);
@@ -35,6 +37,7 @@ time_t db_last_update_time() {
     pthread_mutex_unlock(&db_status_mutex);
     return result;
 }
+
 
 void db_init_status() {
     time_t now;
@@ -59,6 +62,10 @@ void db_init_status() {
 static int submit_write_query(query_t **q) {
     if (q == NULL || *q == NULL)
         return -1;
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    (*q)->created = TIMESTAMP(now);
+    (*q)->place = rb_size(writer_buffer);
     return rb_pushback(writer_buffer, q);
 }
 
@@ -111,26 +118,26 @@ int db_upsert_path(app *aux, const char *path, const int parent) {
     int pathid = db_find_path(aux, path, s);
     scratch_reset(s);
     if (!pathid) {
-    query_t **q = scratch_get(s, 4*sizeof(query_t *));
-    q[0] = scratch_get(s, sizeof(query_t));
-    q[0]->type = Q_CLEAR_RETURN;
-    q[1] = scratch_get(s, sizeof(query_t));
-    q[1]->type = Q_UPSERT_PATH;
-    q[1]->n_str = 1;
-    q[1]->n_int = 1;
-    q[1]->strvals = scratch_get(s, sizeof(char *));
-    q[1]->intvals = scratch_get(s, sizeof(int));
-    q[1]->strvals[0] = scratch_get(s, len);
-    strncpy(q[1]->strvals[0], path, len);
-    q[1]->intvals[0] = (int)parent;
-    q[2] = scratch_get(s, sizeof(query_t));
-    q[2]->type = Q_GET_RETURN;
-    q[2]->returns = R_INT;
-    scratch_free(s, SCRATCH_KEEP);
-    submit_write_query(q);
-    sem_wait(&db_return_int_sem);
-    int val = db_return_int;
-    return val;
+        query_t **q = scratch_get(s, 4*sizeof(query_t *));
+        q[0] = scratch_get(s, sizeof(query_t));
+        q[0]->type = Q_CLEAR_RETURN;
+        q[1] = scratch_get(s, sizeof(query_t));
+        q[1]->type = Q_UPSERT_PATH;
+        q[1]->n_str = 1;
+        q[1]->n_int = 1;
+        q[1]->strvals = scratch_get(s, sizeof(char *));
+        q[1]->intvals = scratch_get(s, sizeof(int));
+        q[1]->strvals[0] = scratch_get(s, len);
+        strncpy(q[1]->strvals[0], path, len);
+        q[1]->intvals[0] = (int)parent;
+        q[2] = scratch_get(s, sizeof(query_t));
+        q[2]->type = Q_GET_RETURN;
+        q[2]->returns = R_INT;
+        scratch_free(s, SCRATCH_KEEP);
+        submit_write_query(q);
+        sem_wait(&db_return_int_sem);
+        int val = db_return_int;
+        return val;
     } else return pathid;
 }
 
@@ -302,7 +309,15 @@ static int execute_write_query(app *aux, query_t **q_list) {
     int ret;
     int val;
     if (q_list == NULL) return -1;
+    struct timeval now;
+    uint64_t created = (*q_list)->created;
+    int place = (*q_list)->place;
+    gettimeofday(&now, NULL);
+    uint64_t processed = TIMESTAMP(now);
+    
     query_t *q = q_list[0];
+    if((aux->config)->verbose)
+        syslog(LOG_INFO, "q_types: ");
     for(int i = 0; q; q = q_list[++i]) {
         if (q == NULL || aux == NULL) {
             syslog(LOG_ERR, "execute_write_query() got NULL\n");
@@ -310,6 +325,9 @@ static int execute_write_query(app *aux, query_t **q_list) {
         }
 // a precompiled query, just bind params
         if (q->type < Q_PRECOMPILED_MAX) { 
+            if((aux->config)->verbose)
+                syslog(LOG_INFO, "%d", q->type);
+            
             sqlite3_stmt *stmt = aux->stmts[q->type];
             int *intval = q->intvals;
             int col = 0;
@@ -353,6 +371,11 @@ static int execute_write_query(app *aux, query_t **q_list) {
             syslog(LOG_ERR, "query type not yet supported.\n");
         }
     }
+    uint64_t fulfilled;
+    gettimeofday(&now, NULL);
+    fulfilled = TIMESTAMP(now);
+    if ((aux->config)->verbose)
+        syslog(LOG_INFO, "[%lu, %lu, %lu, %d]", created, processed - created, fulfilled - processed, place);
     free(q_list); // with SCRATCH, only one free() needed
 }
 
@@ -389,7 +412,7 @@ void *writer_thread(void *arg) {
     int cleanup_pop_val;
     pthread_cleanup_push(writer_cleanup, &state);
 // initialize ringbuffer
-    writer_buffer = rb_init(BUFFER_CAPACITY);
+    writer_buffer = rb_init(conf->buffercap);
 // initialize semaphore for database write results
     sem_init(&db_return_int_sem, 0, 0);
     int ret;
