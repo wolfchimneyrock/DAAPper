@@ -75,6 +75,14 @@ const sql_t queries[] = {
         "       time_played = ? "\
         "WHERE  id = ?;"
     },
+    { "Q_CHANGE_PATH",
+        "WITH new (id, parent, path) AS ( VALUES(?, ?, ?) ) \n"\
+        "INSERT OR REPLACE INTO paths (id, parent, path) \n"\
+        "SELECT old.id, new.parent, new.path  \n"\
+        "FROM new LEFT JOIN paths AS old \n"\
+        "ON  old.id = new.id;"\
+    },
+/* original version - bugged on i.e. \A\A\.... multiple folders same name */
     { "Q_UPSERT_PATH",
         "WITH new (parent, path) \n"\
         "AS ( VALUES(?, ?) ) \n"\
@@ -83,6 +91,11 @@ const sql_t queries[] = {
         "FROM new LEFT JOIN paths AS old \n"\
         "ON new.path = old.path AND new.parent = old.parent; "
     },
+/* alternate version ???
+    { "Q_UPSERT_PATH",
+        "INSERT OR REPLACE INTO paths (parent, path) VALUES(?, ?);"
+    },
+*/
     { "Q_UPSERT_ARTIST",
         "WITH new (artist, artist_sort) \n"\
         "AS ( VALUES(?, ?) ) \n"\
@@ -136,6 +149,9 @@ const sql_t queries[] = {
     },
     { "Q_CLEAR_RETURN",
         "DELETE FROM t_temp;"
+    },
+    { "Q_GET_SONG_PATH_WITH_PARENT",
+        "SELECT id FROM paths WHERE path = ? and parent = ?;"
     },
     { "Q_GET_SONG_FROM_PATH1",
         "SELECT id FROM paths WHERE  path = ?;"
@@ -298,15 +314,17 @@ const sql_t tables[] = {
     { "paths", 
         "CREATE TABLE IF NOT EXISTS paths (\n"\
         "    id            INTEGER PRIMARY KEY NOT NULL,\n"\
-        "    path          VARCHAR(255) NOT NULL,\n"\
         "    parent        INTEGER NOT NULL,\n"\
-        "    ts            TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n"\
-        "); CREATE INDEX IF NOT EXISTS idx_path ON paths(path);\n"\
-        "CREATE INDEX IF NOT EXISTS idx_pathparent ON paths(parent);\n"\
+        "    path          VARCHAR(255) NOT NULL,\n"\
+        "    ts            TIMESTAMP DEFAULT CURRENT_TIMESTAMP, \n"\
+        "    UNIQUE(path, parent) \n"\
+        "); \n"\
+        "CREATE INDEX IF NOT EXISTS idx_paths_parent ON paths(parent); \n"\
+        "CREATE INDEX IF NOT EXISTS idx_paths_path ON paths(path); \n"\
         "CREATE TRIGGER IF NOT EXISTS path_upd AFTER UPDATE ON paths \n"\
         "      BEGIN INSERT INTO t_temp SELECT NEW.id; END; \n"\
         "CREATE TRIGGER IF NOT EXISTS path_ins AFTER INSERT ON paths \n"\
-        "      BEGIN INSERT INTO t_temp SELECT NEW.id; END;"
+        "      BEGIN INSERT INTO t_temp SELECT NEW.id; END; \n"
     },
     { "pathtree",
         "CREATE VIRTUAL TABLE IF NOT EXISTS pathtree "\
@@ -439,7 +457,30 @@ void precompile_statements(void *arg) {
     }   
 }
 
-int db_find_path(app *aux, const char *path, SCRATCH *s) {
+int db_find_path_with_parent(app *aux, const char *path, const int parent, SCRATCH *s) {
+    sqlite3_stmt *stmt = aux->stmts[Q_GET_SONG_PATH_WITH_PARENT];
+    int ret;
+    ret = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_STATIC);
+    if (ret != SQLITE_OK) {
+        sqlite3_reset(stmt);
+        return 0;
+    }
+    ret = sqlite3_bind_int(stmt, 2, parent);
+    if (ret != SQLITE_OK) {
+        sqlite3_reset(stmt);
+        return 0;
+    }
+    ret = sqlite3_step(stmt);
+    if (ret != SQLITE_ROW) {
+        sqlite3_reset(stmt);
+        return 0;
+    }
+    int result = sqlite3_column_int(stmt, 0);
+    sqlite3_reset(stmt);
+    return result;
+}
+
+int db_find_path(app *aux, const char *path,  SCRATCH *s) {
 
     int    count  = split_path(path, s);
     char **p      = scratch_head(s);

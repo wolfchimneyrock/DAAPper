@@ -15,4 +15,5 @@ int   vector_pushback(vector *d, const void *x);
 void  vector_popback(vector *d);
 void *vector_peekback(vector *d);
 void  vector_free(vector *d) ;
+int vector_isempty(vector *d) ;
 #endif

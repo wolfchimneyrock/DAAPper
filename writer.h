@@ -9,6 +9,8 @@ extern volatile sig_atomic_t writer_active;
 extern sem_t db_ready;
 void db_inc_playcount    (const int song); 
 void db_remove_file      (const int pathid); 
+int  db_change_path      (app *aux, const int pathid, 
+                          const char *path, const int parent);
 int  db_upsert_path      (app *aux, const char *path, const int parent); 
 int  db_upsert_artist    (app *aux, const char *artist, 
                           const char *artist_sort); 

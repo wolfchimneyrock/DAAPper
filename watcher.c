@@ -82,14 +82,41 @@ void library_change_cb(fsw_cevent const *const events,
                           }
             break;
             case MovedTo | Created:
+                syslog(LOG_INFO, "'%s' created\n", events[i].path);
             vector_pushback(&moveTo, strdup(events[i].path));
             break;
             case MovedFrom | Removed:
+                syslog(LOG_INFO, "'%s' removed\n", events[i].path);
             vector_pushback(&moveFrom, strdup(events[i].path));
             break;
             case Updated:
+                syslog(LOG_INFO, "'%s' renamed\n", events[i].path);
             vector_pushback(&updated, strdup(events[i].path));
         }
+    }
+    while (!vector_isempty(&moveTo) && !vector_isempty(&moveFrom)) {
+        char *frompath = strdup(vector_peekback(&moveFrom));
+        int pathid = db_find_path(state, frompath, s);
+        scratch_reset(s);
+        char *fromfile = split_filename(frompath);
+        char *topath   = strdup(vector_peekback(&moveTo));
+        char *tofile   = split_filename(topath);
+        int newparent;
+        if (strcmp(topath, state->config->root)) {
+            newparent = db_find_path(state, topath, s);
+        } 
+        else newparent = 1;
+        scratch_reset(s);
+
+        syslog(LOG_INFO, "moved %d [%s/%s] to parent %d [%s/%s]\n",
+                pathid, frompath, fromfile, newparent, topath, tofile);
+        db_change_path(state, pathid, tofile, newparent);
+
+        vector_popback(&moveFrom);
+        vector_popback(&moveTo);
+        free(frompath);
+        free(topath);
+
     }
     vector_free(&moveTo);
     vector_free(&moveFrom);

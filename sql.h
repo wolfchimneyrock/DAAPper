@@ -47,6 +47,7 @@ typedef enum q_type {
     Q_REMOVE_PATH,
     Q_REMOVE_SONG,
     Q_PLAYCOUNT_INC,
+    Q_CHANGE_PATH,
     Q_UPSERT_PATH,
     Q_UPSERT_ARTIST,
     Q_UPSERT_PUBLISHER,
@@ -55,6 +56,7 @@ typedef enum q_type {
     Q_UPSERT_GENRE,
     Q_GET_RETURN,
     Q_CLEAR_RETURN,
+    Q_GET_SONG_PATH_WITH_PARENT,
     Q_GET_SONG_FROM_PATH1,
     Q_GET_SONG_FROM_PATH2,
     Q_GET_SONG_FROM_PATH3,
@@ -159,6 +161,7 @@ int db_find_album     (app *aux, const char *album, int artist, int year);
 
 size_t count_all_files         (app *aux);
 int    db_find_path            (app *aux, const char *path, SCRATCH *s);
+int db_find_path_with_parent(app *aux, const char *path, const int parent, SCRATCH *s);
 size_t count_precompiled_items (app *aux, q_type q, int *bindvar);
 size_t count_smart_items       (app *aux, t_type table, 
                                 vector *clauses, int *bindvar); 

@@ -115,7 +115,7 @@ int db_upsert_path(app *aux, const char *path, const int parent) {
                               1*sizeof(char *) + 
                               1*sizeof(int) + 
                               len);
-    int pathid = db_find_path(aux, path, s);
+    int pathid = db_find_path_with_parent(aux, path, parent, s);
     scratch_reset(s);
     if (!pathid) {
         query_t **q = scratch_get(s, 4*sizeof(query_t *));
@@ -139,6 +139,29 @@ int db_upsert_path(app *aux, const char *path, const int parent) {
         int val = db_return_int;
         return val;
     } else return pathid;
+}
+
+int db_change_path(app *aux, const int pathid, const char *path, const int parent) {
+    size_t len = strlen(path) + 1;
+    SCRATCH *s = scratch_new( 2*sizeof(query_t *) + 
+                              1*sizeof(query_t) + 
+                              1*sizeof(char *) + 
+                              2*sizeof(int) + 
+                              len);
+    scratch_reset(s);
+    query_t **q = scratch_get(s, 2*sizeof(query_t *));
+    q[0] = scratch_get(s, sizeof(query_t));
+    q[0]->type = Q_CHANGE_PATH;
+    q[0]->n_str = 1;
+    q[0]->n_int = 2;
+    q[0]->strvals = scratch_get(s, sizeof(char *));
+    q[0]->intvals = scratch_get(s, 2*sizeof(int));
+    q[0]->strvals[0] = scratch_get(s, len);
+    strncpy(q[0]->strvals[0], path, len);
+    q[0]->intvals[0] = (int)pathid;
+    q[0]->intvals[1] = (int)parent;
+    scratch_free(s, SCRATCH_KEEP);
+    submit_write_query(q);
 }
 
 int db_upsert_artist(app *aux, const char *artist, const char *artist_sort) {

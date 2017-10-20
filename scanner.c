@@ -230,7 +230,6 @@ static int execute_scan(app *aux, char *path) {
     }
 
     syslog(LOG_INFO, "scanning '%s'\n", paths[0]);
-
     ID3CB *id3 = id3_new_parser(ID3_AUTOCONVERT_TO_UTF8);
 
     id3_set_all_texts_handler(id3, process_text_tags);
@@ -240,7 +239,8 @@ static int execute_scan(app *aux, char *path) {
     size_t file_count = 0;
     size_t dir_count  = 0;
     FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_NOSTAT, 0);
-    FTSENT *node;   
+    FTSENT *node;
+       
     while (node = fts_read(tree)) {
         if (node->fts_info & FTS_F) { // visiting a file
             //syslog(LOG_INFO, "found file '%s'\n", node->fts_name);
@@ -261,7 +261,8 @@ static int execute_scan(app *aux, char *path) {
             else name = node->fts_name;
             int parent = PTR_TO_INT(vector_peekback(&parents));
             int this = db_upsert_path(aux, strdup(name), parent);
-    //      fsw_add_path(aux->fd, path);
+            //printf("[%d -> %d] %s : %s \n", parent, this, path, name);
+            //fsw_add_path(aux->fd, path);
             dir_count++;
             vector_pushback(&parents, INT_TO_PTR(this));
         }
@@ -274,9 +275,7 @@ static int execute_scan(app *aux, char *path) {
     //scratch_free(path_scratch, SCRATCH_FREE);
     id3_dispose_parser(id3);
     vector_free(&parents);
-
     syslog(LOG_INFO, "scanned %lu files in %lu directories.\n", file_count, dir_count);
-
 }
 
 static void scanner_cleanup(void *arg) {

@@ -46,3 +46,8 @@ void vector_popback(vector *d) {
 		d->used--;
 	}
 }
+
+int vector_isempty(vector *d) {
+    if (d == NULL) return 1;
+    return d->used == 0;
+}
