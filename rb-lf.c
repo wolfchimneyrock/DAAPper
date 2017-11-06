@@ -91,6 +91,7 @@ void *rb_popfront(RINGBUFFER *rb) {
         } while (!__sync_bool_compare_and_swap(&rb->head, head, updated));
         // we now have reserved the former head node
         result = rb->data[head];
+        __sync_synchronize();
         // now its safe to release the prior node by decrementing used
         do {
             current = rb->tail_used;
@@ -139,7 +140,7 @@ int rb_drain(RINGBUFFER *rb, void **dest, size_t max) {
             memcpy(dest, rb->data + head, first*sizeof(void *));
             memcpy(dest + first, rb->data, (count - first)*sizeof(void *));
         }
-
+        __sync_synchronize();
         // now safe to release the nodes
         do {
             current = rb->tail_used;
