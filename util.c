@@ -4,6 +4,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <netinet/in.h>
+#include <evhtp/evhtp.h>
 #include "util.h"
 #include "scratch.h"
 
@@ -22,6 +23,18 @@ void timestamp_rfc1123(char *buf) {
     memcpy(buf, DAY_NAMES[ts.tm_wday], 3);
     memcpy(buf+8, MONTH_NAMES[ts.tm_mon], 3);
 }
+
+void log_request(evhtp_request_t *req, void *a) {
+    char ipaddr[16];
+    app *aux = (app *)evthr_get_aux(req->conn->thread);
+    printable_ipaddress((struct sockaddr_in *)req->conn->saddr, ipaddr);
+    const char *ua  = evhtp_kv_find(req->headers_in, "User-Agent");
+    syslog(LOG_INFO, "%s [%s]{%d} requested %s: %s%s\n", 
+            ipaddr, ua, aux->fd, (char *)a, req->uri->path->path,
+            req->uri->path->file);
+    evhtp_kv_t *kv;
+}
+
 
 int count_char(char *buf, char ch) {
     if (buf == NULL) return 0;

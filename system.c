@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
@@ -23,6 +25,25 @@ static char pidfile_str[256];
 volatile pthread_t main_pid, signal_pid, 
     watcher_pid, scanner_pid, writer_pid; 
 
+int set_affinityrange(pthread_t pid, int firstcpu, int lastcpu) {
+    cpu_set_t c;
+    CPU_ZERO(&c);
+
+    // add cpu's
+    for (int i = firstcpu; i <= lastcpu; i++)
+        CPU_SET(i, &c);
+
+    //set affinity
+    if (pthread_setaffinity_np(pid, sizeof(cpu_set_t), &c))
+        return -1;
+
+    // check if successfully set
+    if (pthread_getaffinity_np(pid, sizeof(cpu_set_t), &c))
+        return -1;
+
+    return 0;
+}   
+
 void staylocal(config_t *conf, char **argv) {
     // don't daemonize - but write pid file and enable logging to stdout
     snprintf(pidfile_str, 256, "/tmp/%u-daapper.pid", conf->port);
@@ -37,6 +58,7 @@ void staylocal(config_t *conf, char **argv) {
     snprintf(pid_str, 10, "%d", getpid()); 
     int ret = write(pidfile_fd, pid_str, strlen(pid_str) + 1);
     openlog(NULL, LOG_PERROR, LOG_USER);
+    //openlog(NULL, 0, LOG_USER);
     
 }
 

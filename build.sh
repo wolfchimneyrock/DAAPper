@@ -1,1 +1,1 @@
-gcc -O2 -I/usr/local/include -I/usr/local/include/evhtp *.c -pthread -lfswatch -levent -lsqlite3 -levhtp -lconfuse -o daap
+LIBRARY_PATH=/usr/local/lib gcc -O3  -I/usr/local/include -I/usr/local/include/evhtp *.c -pthread -ltcmalloc -lfswatch -levent -lssl -lcrypto -lsqlite3 -levhtp -lssl -levent_openssl -lconfuse -levent -o daap

@@ -69,11 +69,20 @@ const sql_t queries[] = {
         "DELETE FROM songs "\
         "WHERE  path = ?;"
     },
+/* ORIGINAL
     { "Q_PLAYCOUNT_INC",
         "UPDATE songs "\
         "SET    play_count  = play_count + 1, "\
         "       time_played = ? "\
         "WHERE  id = ?;"
+    },
+*/
+    { "Q_PLAYCOUNT_INC",
+        "WITH new (song, time_requested) as ( VALUES(?, ?) ) \n"\
+        "INSERT INTO plays(song, time_requested, time_processed) \n"\
+        "SELECT new.song, new.time_requested, \n"\
+        "cast((julianday('now') - 2440587.49999999)*86400000000 as integer) \n"\
+        "FROM new;"
     },
     { "Q_CHANGE_PATH",
         "WITH new (id, parent, path) AS ( VALUES(?, ?, ?) ) \n"\
@@ -82,7 +91,6 @@ const sql_t queries[] = {
         "FROM new LEFT JOIN paths AS old \n"\
         "ON  old.id = new.id;"\
     },
-/* original version - bugged on i.e. \A\A\.... multiple folders same name */
     { "Q_UPSERT_PATH",
         "WITH new (parent, path) \n"\
         "AS ( VALUES(?, ?) ) \n"\
@@ -91,11 +99,6 @@ const sql_t queries[] = {
         "FROM new LEFT JOIN paths AS old \n"\
         "ON new.path = old.path AND new.parent = old.parent; "
     },
-/* alternate version ???
-    { "Q_UPSERT_PATH",
-        "INSERT OR REPLACE INTO paths (parent, path) VALUES(?, ?);"
-    },
-*/
     { "Q_UPSERT_ARTIST",
         "WITH new (artist, artist_sort) \n"\
         "AS ( VALUES(?, ?) ) \n"\
@@ -129,10 +132,9 @@ const sql_t queries[] = {
         "          song_length, title) \n"\
         "AS ( VALUES(?, ?, ?, ?, ?, ?, ?, ?) ) \n"\
         "INSERT OR REPLACE INTO songs (id, title, path, artist, album, \n"\
-        "genre, track, disc, song_length, play_count, time_played) \n"\
+        "genre, track, disc, song_length) \n"\
         "SELECT old.id, new.title, new.path, new.artist, new.album, \n"\
-        "       new.genre, new.track, new.disc, new.song_length, \n"\
-        "       old.play_count, old.time_played \n"\
+        "       new.genre, new.track, new.disc, new.song_length \n"\
         "FROM new LEFT JOIN songs AS old \n"\
         "ON new.path = old.path; "
     },
@@ -369,7 +371,6 @@ const sql_t tables[] = {
         "    disc          INTEGER       DEFAULT 0,\n"\
         "    bpm           INTEGER       DEFAULT 0,\n"\
         "    rating        INTEGER       DEFAULT 0,\n"\
-        "    play_count    INTEGER       DEFAULT 0,\n"\
         "    time_added    INTEGER       DEFAULT 0,\n"\
         "    time_played   INTEGER       DEFAULT 0,\n"\
         "    has_video     INTEGER       DEFAULT 0,\n"\
@@ -404,6 +405,15 @@ const sql_t tables[] = {
     },
     { "t_temp",
         "CREATE TABLE IF NOT EXISTS t_temp(id INTEGER);"
+    },
+    { "plays",
+        "CREATE TABLE IF NOT EXISTS plays (\n"\
+        "    id             INTEGER PRIMARY KEY NOT NULL, \n"\
+        "    song           INTEGER NOT NULL, \n"\
+        "    time_requested INTEGER, \n"\
+        "    time_processed INTEGER, \n"\
+        "    ts             TIMESTAMP DEFAULT CURRENT_TIMESTAMP \n"\
+        ");"
     },
         NULL
 };
@@ -444,6 +454,7 @@ int db_close_database(app *aux) {
 
 void precompile_statements(void *arg) {
     app *aux = (app *)arg;
+    aux->stmts = calloc(Q_PRECOMPILED_MAX, sizeof(sqlite3_stmt *));
     int ret;
     q_type q;
     for (q = 0; q < Q_PRECOMPILED_MAX; q++) {

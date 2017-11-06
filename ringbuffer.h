@@ -10,5 +10,5 @@ int         rb_size           (RINGBUFFER *rb);
 int         rb_isempty        (RINGBUFFER *rb);
 int         rb_pushback       (RINGBUFFER *rb, void *data);
 void       *rb_popfront       (RINGBUFFER *rb);
-
+int         rb_drain          (RINGBUFFER *rb, void **dest, size_t max);
 #endif

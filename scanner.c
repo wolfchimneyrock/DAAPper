@@ -10,6 +10,7 @@
 #include <string.h>
 #include <fts.h>
 #include <sqlite3.h>
+#include "util.h"
 #include "config.h"
 #include "id3cb.h"
 #include "ringbuffer.h"
@@ -18,12 +19,15 @@
 #include "scanner.h"
 #include "watcher.h"
 #include "writer.h"
-#include "util.h"
 #include "system.h"
+#include "cache.h"
 
+#define CACHE_INITIAL_CAP    4096
 #define META_SCRATCH_SIZE    4096
 #define PATH_SCRATCH_SIZE    4096 
-#define BUFFER_CAPACITY      6
+#define BUFFER_CAPACITY      256 
+
+static CACHE *file_cache;
 
 volatile sig_atomic_t   scanner_active      = 0;
 static pthread_mutex_t  scanner_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -148,6 +152,7 @@ static int process_text_tags(const id3_text *text, void *aux) {
 }
 
 static int add_file(app *aux, const char *fname, const char *path, ID3CB *id3, SCRATCH *meta_scratch, int parent) {
+    syslog(LOG_INFO, "    add_file() %s/%s", path, fname);
     char *ext = strchr(fname, '.');
     if (ext && !strcmp(ext + 1, "mp3")) {
         int pathid = db_upsert_path(aux, fname, parent);
@@ -243,7 +248,7 @@ static int execute_scan(app *aux, char *path) {
        
     while (node = fts_read(tree)) {
         if (node->fts_info & FTS_F) { // visiting a file
-            //syslog(LOG_INFO, "found file '%s'\n", node->fts_name);
+            syslog(LOG_INFO, "found file '%s'\n", node->fts_name);
                 //fts_set(tree, node, FTS_SKIP);
             meta_info_t *meta = scratch_get(meta_scratch, sizeof(meta_info_t));
             int parent =  PTR_TO_INT(vector_peekback(&parents));

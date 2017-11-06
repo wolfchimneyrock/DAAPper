@@ -7,6 +7,7 @@
 #include "meta.h"
 #include "vector.h"
 #include "scratch.h"
+#include "util.h"
 
 #define STR(x) (x ? x : "")
 #define EMPTY_STRLIST { 0 }
@@ -24,6 +25,7 @@ typedef enum t_type {
     T_PLAYLISTS,
     T_PLAYLISTITEMS,
     T_TEMP,
+    T_PLAYS,
     T_MAX,
     T_GROUPS,
     T_INOTIFY,
@@ -115,8 +117,9 @@ typedef struct query_t {
     r_type   returns;
     uint64_t created;
     int      place;
-    int     n_str, n_int;
+    int     n_str, n_int, n_int64;;
     int     *intvals;
+    int64_t *int64vals;
     char    **strvals;
     char    **intcols;
     char    **strcols;
@@ -128,22 +131,6 @@ typedef struct sql_t {
 } sql_t;
 
 // thread-pooling using libevhtp thread-design.c as a template
-
-typedef struct app_parent {
-    evhtp_t  *htp;
-    evbase_t *base;
-    config_t *config;
-} app_parent;
-
-typedef struct app {
-    int          fd;    
-    app_parent   *parent;
-    evbase_t     *base;
-    sqlite3      *db;
-    config_t     *config;
-// store pre-compiled sql statements
-    sqlite3_stmt *stmts[Q_PRECOMPILED_MAX]; 
-} app;
 
 extern const char *query_strings[];
 extern const char *table_strings[];

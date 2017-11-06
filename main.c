@@ -10,6 +10,7 @@
 #include <syslog.h>
 #include <sqlite3.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <getopt.h>
 #include "config.h"
 #include "dmap.h"
@@ -22,7 +23,7 @@
 #include "writer.h"
 #include "scanner.h"
 #include "system.h"
-
+#include "stream.h"
 /**
  * @brief this is called automatically when the main thread is cancelled
  */
@@ -37,7 +38,7 @@ static void main_cleanup(void *arg) {
     syslog(LOG_INFO, "main thread terminated.\n");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:B:";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:S";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -48,6 +49,7 @@ static struct option long_options[] = {
     { "threads",            required_argument, 0,       't' },
     { "timeout",            required_argument, 0,       'T' },
     { "buffer-capacity",    required_argument, 0,       'B' },
+    { "sequential",         no_argument,       0,       'S' },
     { 0, 0, 0, 0 }
 };
 
@@ -76,6 +78,7 @@ int main (int argc, char *argv[]) {
     conf.buffercap    = -1;
     conf.verbose      = -1;
     conf.root         = NULL;
+    conf.sequential   = -1;
     conf.userid       = NULL;
     conf.fullscan     = -1;
     conf.server_name  = hostname;
@@ -111,6 +114,8 @@ int main (int argc, char *argv[]) {
                       break;
             case 'B': INTARG(conf.buffercap, "buffer-capacity");
                       break;
+            case 'S': conf.sequential = 1;
+                      break;
             default:
                       exit(1);
         }
@@ -135,11 +140,33 @@ int main (int argc, char *argv[]) {
     atexit(cleanup);
     int cleanup_pop_val;
     pthread_cleanup_push(main_cleanup, &parent);
+
+    res = sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
+    //res = sqlite3_config(SQLITE_CONFIG_SERIALIZED);
+    if (res != SQLITE_OK) {
+        syslog(LOG_ERR, "Failed to make SQLITE3 multithreaded");
+    }
+
+    res = sqlite3_enable_shared_cache(1);
+    if (res != SQLITE_OK) {
+        syslog(LOG_ERR,  "failed to enable SQLITE3 shared cachen");
+    }
+
+
+    struct rlimit fd_limit;
+    getrlimit(RLIMIT_NOFILE, &fd_limit);
+    fd_limit.rlim_cur = fd_limit.rlim_max;
+    setrlimit(RLIMIT_NOFILE, &fd_limit);
+    file_cache = cache_init(4096, 0, create_segment, NULL);
+
+
 // WRITER thread:
 // this is the only thread with write access to the database
 // other threads must request writes by adding a query request
 // to a global ringbuffer
     pthread_create((pthread_t *)&writer_pid, NULL, &writer_thread, &conf);
+    set_affinityrange(writer_pid, 0, 0); // restrict to one cpu
+
 // WATCHER thread:
 // this is the thread that watches for library changes,
 // and submits updates to the SCANNER thread
@@ -147,6 +174,7 @@ int main (int argc, char *argv[]) {
 // SCANNER thread:
 // this is the thread that scans mpeg files for metadata
     pthread_create((pthread_t *)&scanner_pid, NULL, &scanner_thread, &conf);
+    set_affinityrange(scanner_pid, 2, 2); // restrict to one cpu
 // this maybe should be moved to WRITER thread initialization?
 // this maintains "clean" and "dirty" status of the database
     db_init_status();
@@ -163,6 +191,14 @@ int main (int argc, char *argv[]) {
     register_callbacks(parent.htp);
     evhtp_use_threads_wexit(parent.htp, app_init_thread, app_term_thread, 
                             conf.threads, &parent);
+    /*
+    int i = 0;
+    evthr_t * evthr = NULL;
+    TAILQ_FOREACH(evthr, &parent.htp->thr_pool->pool->threads, next) {
+        set_affinityrange(*(evthr->thr), i, i);
+        i++;
+    }
+    */
     int socket = 0;
     if (argc > 1) socket = atoi(argv[1]);
     if (socket == 0) socket = conf.port;

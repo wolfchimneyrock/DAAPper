@@ -3,6 +3,7 @@
 
 extern volatile sig_atomic_t scanner_active;
 
+
 int    scanner_submit_request(char *path);
 void   wait_for_scanner();
 void  *scanner_thread(void *arg);

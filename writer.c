@@ -14,6 +14,7 @@
 #include "ringbuffer.h"
 #include "scratch.h"
 #include "system.h"
+#include "util.h"
 
 volatile sig_atomic_t writer_active = 0;
 static int db_return_int;
@@ -24,7 +25,10 @@ static sem_t db_return_int_sem,
 static pthread_cond_t  writer_ready       = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t writer_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t db_status_mutex    = PTHREAD_MUTEX_INITIALIZER;
-static time_t db_updated;
+volatile time_t db_updated;
+volatile struct timeval 
+    write_started,
+    write_finished;
 
 #define TIMESTAMP(t) \
     (1000000 * t.tv_sec + t.tv_usec)
@@ -70,19 +74,23 @@ static int submit_write_query(query_t **q) {
 }
 
 void db_inc_playcount(const int song) {
-    time_t now;
-    time(&now);
 // we don't have to be (and can't always be) this precise with scratch size
     SCRATCH *s = scratch_new( 2*sizeof(query_t *) + 
                               sizeof(query_t) + 
-                              2*sizeof(int));
+                              1*sizeof(int) +
+                              1*sizeof(int64_t)
+                             );
     query_t **q = scratch_get(s, 2*sizeof(query_t *));
+    struct timeval now;
+    gettimeofday(&now, NULL);
     q[0] = scratch_get(s, sizeof(query_t));
     q[0]->type = Q_PLAYCOUNT_INC;
-    q[0]->n_int = 2;
-    q[0]->intvals = scratch_get(s, 2*sizeof(int));
-    q[0]->intvals[0] = now;
-    q[0]->intvals[1] = (int)song;
+    q[0]->n_int = 1;
+    q[0]->n_int64 = 1;
+    q[0]->intvals = scratch_get(s, 1*sizeof(int));
+    q[0]->int64vals = scratch_get(s, 1*sizeof(int64_t));
+    q[0]->intvals[0] = (int)song;
+    q[0]->int64vals[0] = TIMESTAMP(now);
     scratch_free(s, SCRATCH_KEEP);
     submit_write_query(q);
 }
@@ -332,15 +340,20 @@ static int execute_write_query(app *aux, query_t **q_list) {
     int ret;
     int val;
     if (q_list == NULL) return -1;
+
+    /*
     struct timeval now;
     uint64_t created = (*q_list)->created;
     int place = (*q_list)->place;
     gettimeofday(&now, NULL);
     uint64_t processed = TIMESTAMP(now);
+    */
+
+    uint64_t idle, writing;
+    gettimeofday((struct timeval *)&write_started, NULL);
+    idle = TIMESTAMP(write_started) - TIMESTAMP(write_finished);
     
     query_t *q = q_list[0];
-    if((aux->config)->verbose)
-        syslog(LOG_INFO, "q_types: ");
     for(int i = 0; q; q = q_list[++i]) {
         if (q == NULL || aux == NULL) {
             syslog(LOG_ERR, "execute_write_query() got NULL\n");
@@ -348,8 +361,6 @@ static int execute_write_query(app *aux, query_t **q_list) {
         }
 // a precompiled query, just bind params
         if (q->type < Q_PRECOMPILED_MAX) { 
-            if((aux->config)->verbose)
-                syslog(LOG_INFO, "%d", q->type);
             
             sqlite3_stmt *stmt = aux->stmts[q->type];
             int *intval = q->intvals;
@@ -358,6 +369,12 @@ static int execute_write_query(app *aux, query_t **q_list) {
                 ret = sqlite3_bind_int(stmt, ++col, q->intvals[i]);
                 if (ret != SQLITE_OK)
                     syslog(LOG_ERR, "failed to bind int column,\n");
+            }
+            int64_t *int64val = q->int64vals;
+            for (int i = 0; i < q->n_int64; i++) {
+                ret = sqlite3_bind_int64(stmt, ++col, q->int64vals[i]);
+                if (ret != SQLITE_OK)
+                    syslog(LOG_ERR, "failed to bind int64 column.\n");
             }
             char **strval = q->strvals;
             for (int i = 0; i < q->n_str; i++) {
@@ -394,11 +411,18 @@ static int execute_write_query(app *aux, query_t **q_list) {
             syslog(LOG_ERR, "query type not yet supported.\n");
         }
     }
+    gettimeofday((struct timeval *)&write_finished, NULL);
+    writing = TIMESTAMP(write_finished) - TIMESTAMP(write_started);
+
+    //syslog(LOG_INFO, "[%.3f%% sqlite duty cycle]", (double)writing*100 / (writing + idle));
+    
+    /*
     uint64_t fulfilled;
-    gettimeofday(&now, NULL);
     fulfilled = TIMESTAMP(now);
+
     if ((aux->config)->verbose)
         syslog(LOG_INFO, "[%lu, %lu, %lu, %d]", created, processed - created, fulfilled - processed, place);
+    */
     free(q_list); // with SCRATCH, only one free() needed
 }
 
@@ -440,11 +464,12 @@ void *writer_thread(void *arg) {
     sem_init(&db_return_int_sem, 0, 0);
     int ret;
     syslog(LOG_INFO, "dbfile: %s\n", conf->dbfile);
-    db_open_database(&state, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+    db_open_database(&state, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX);
 // this only needs to be called once per database creation
 // but at this point, we don't know if we created or 
 // merely opened just now
     ret = sqlite3_exec(state.db, "PRAGMA journal_mode = WAL;", 0, 0, 0);
+    ret = sqlite3_exec(state.db, "PRAGMA synchronous = OFF;", 0, 0, 0);
 // create tables, indexes, triggers
     for (t_type t = 0; t < T_MAX; t++) {
         ret = sqlite3_exec(state.db, tables[t].query, 0, 0, 0);
@@ -459,9 +484,23 @@ void *writer_thread(void *arg) {
     pthread_mutex_unlock(&writer_ready_mutex);
     pthread_cond_broadcast(&writer_ready);
 // writer main loop
+// TBD: batch drain the ringbuffer vs individual pops 
+    int count;
+    int bufsize = conf->buffercap;
+    query_t ***buf = calloc(bufsize, sizeof(query_t **));
     while (writer_active) {
-        query_t **q = rb_popfront(writer_buffer);
-        execute_write_query(&state, q);
+        if (!conf->sequential) {
+        //query_t **q = rb_popfront(writer_buffer);
+            count = rb_drain(writer_buffer, (void **)buf, bufsize);
+            syslog(LOG_INFO, "writer got %d elements", count);
+            for (int i = 0; i < count; i++) {
+                if (buf[i])
+                    execute_write_query(&state, buf[i]);
+            }
+        } else {
+            query_t **q = rb_popfront(writer_buffer);
+            execute_write_query(&state, q);
+        }
     }
     pthread_cleanup_pop(cleanup_pop_val);
     return NULL;

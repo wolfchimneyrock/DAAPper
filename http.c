@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <event2/util.h>
+#include <event2/event.h>
 #include <evhtp/evhtp.h>
 #include <sqlite3.h>
 #include <syslog.h>
@@ -20,18 +20,18 @@
 #include "session.h"
 #include "writer.h"
 #include "scratch.h"
+#include "stream.h"
 
 static const int  current_rev = 2;
 
 #define DB_STR  "^/databases/"
 #define REG_NUM "([0-9]+)"
+
 const char *server_name = "LULU";
 const char *library_name = "Robert";
 
-#define ADD_DATE_HEADER(txt) \
-    char date_now[30]; timestamp_rfc1123(date_now);\
-    evhtp_headers_add_header(req->headers_out, \
-    evhtp_header_new(txt, date_now, 0, 0));
+static volatile int threads = 0;
+pthread_mutex_t threads_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static evthr_t *get_request_thr(evhtp_request_t * request) {
     evhtp_connection_t * htpconn;
@@ -43,26 +43,21 @@ static evthr_t *get_request_thr(evhtp_request_t * request) {
     return thread;
 }
 
-void log_request(evhtp_request_t *req, void *a) {
-    char ipaddr[16];
-    printable_ipaddress((struct sockaddr_in *)req->conn->saddr, ipaddr);
-    const char *ua  = evhtp_kv_find(req->headers_in, "User-Agent");
-    syslog(LOG_INFO, "%s [%s] requested %s: %s%s\n", 
-            ipaddr, ua, (char *)a, req->uri->path->path,
-            req->uri->path->file);
-    evhtp_kv_t *kv;
-}
-
 void app_init_thread(evhtp_t *htp, evthr_t *thread, void *arg) {
 // per thread init here: open db, etc
     app_parent *parent = (app_parent *)arg;
     app *aux = malloc(sizeof(app));
+        
+    pthread_mutex_lock(&threads_mutex);
+    aux->fd = ++threads;
+    pthread_mutex_unlock(&threads_mutex);
+
     aux->parent = parent;
     aux->base   = evthr_get_base(thread);
     aux->config = parent->config;
 // wait until writer thread is ready 
     wait_for_writer();
-    db_open_database(aux, SQLITE_OPEN_READONLY);
+    db_open_database(aux, SQLITE_OPEN_READONLY|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_SHAREDCACHE);
     precompile_statements(aux);
 // to be retrieved by request callbacks that need
     evthr_set_aux(thread, aux); 
@@ -95,6 +90,7 @@ void add_headers_out(evhtp_request_t *req) {
           evhtp_header_new("Content-Language", "en_us", 0, 0));
     evhtp_headers_add_header(req->headers_out,
           evhtp_header_new("Connection", "keep-alive", 0, 0));
+          //evhtp_header_new("Connection", "close", 0, 0));
 }
 
 // generic response for unassigned uri
@@ -454,57 +450,6 @@ void res_item_list(evhtp_request_t *req, void *a) {
     vector_free(&tags);
     free(sqlstr);
     if (raw_meta) free(raw_meta);
-}
-
-// clean up after streaming callback
-static evhtp_res stream_item_finish_cb(evhtp_request_t *req, void *arg) {
-    int fd = PTR_TO_INT(arg);
-    syslog(LOG_INFO, "closed stream file [%d]\n", fd);
-    //close(fd);
-    return EVHTP_RES_OK;
-}
-
-void res_stream_item(evhtp_request_t *req, void *a) {
-    log_request(req, a);
-    add_headers_out(req);
-    ADD_DATE_HEADER("Date");
-    evthr_t *thread = get_request_thr(req);
-    app     *aux    = (app *)evthr_get_aux(thread);
-    sqlite3_stmt *stmt;
-    int id = atoi(req->uri->path->file);
-    if (id == 0) {
-        syslog(LOG_ERR, "invalid song id '%s' requested\n", 
-                        req->uri->path->file);
-        evhtp_send_reply(req, EVHTP_RES_ERROR);
-        return;
-    }
-    int ret;
-    stmt = aux->stmts[Q_GET_PATH];
-    ret = sqlite3_bind_int(stmt, 1, id);
-    if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "error binding value: '%d'\n", id);
-        evhtp_send_reply(req, EVHTP_RES_ERROR);
-        return;
-    }
-    ret = sqlite3_step(stmt);
-    if (ret != SQLITE_ROW) {
-        syslog(LOG_ERR, "error retrieving file path for item %d\n", id);
-        evhtp_send_reply(req, EVHTP_RES_ERROR);
-        sqlite3_reset(stmt);
-        return;
-    }
-    const char *path = sqlite3_column_text(stmt, 0);
-    syslog(LOG_INFO, "streaming [%d] %s\n", aux->fd, path);
-    struct stat st;
-    aux->fd = open(path, O_RDONLY);
-    sqlite3_reset(stmt);
-    fstat(aux->fd, &st);
-    db_inc_playcount(id);
-    evhtp_set_hook(&req->hooks, evhtp_hook_on_request_fini, 
-                   stream_item_finish_cb, INT_TO_PTR(aux->fd));
-    evbuffer_add_file(req->buffer_out, aux->fd, 0, st.st_size);
-    evhtp_send_reply(req, EVHTP_RES_OK);
-    // cleanup now done in callback
 }
 
 void res_content_codes(evhtp_request_t *req, void *a) {

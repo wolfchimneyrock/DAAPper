@@ -22,6 +22,7 @@ void get_config(config_t *config, char *cfg_file) {
 		CFG_SIMPLE_INT("port",         &(config->port)),
 		CFG_SIMPLE_INT("threads",      &(config->threads)),
 		CFG_SIMPLE_INT("timeout",      &(config->timeout)),
+        CFG_SIMPLE_INT("sequential",   &(config->sequential)),
 		CFG_SIMPLE_STR("name",         &(config->name)),
 		CFG_SIMPLE_STR("root",         &(config->root)),
 		CFG_SIMPLE_STR("dbfile",       &(config->dbfile)),
@@ -34,12 +35,13 @@ void get_config(config_t *config, char *cfg_file) {
 
     // use sane defaults if not already set by cmdline parameters
 
-    DEFAULT_INT(config->port,     3689);
-    DEFAULT_INT(config->threads,  4);
-    DEFAULT_INT(config->timeout,  1800);
-    DEFAULT_INT(config->fullscan, 0);
-    DEFAULT_INT(config->buffercap, 100);
-    DEFAULT_INT(config->verbose,  0);
+    DEFAULT_INT(config->port,       3689);
+    DEFAULT_INT(config->threads,    8);
+    DEFAULT_INT(config->timeout,    1800);
+    DEFAULT_INT(config->fullscan,   0);
+    DEFAULT_INT(config->buffercap,  256);
+    DEFAULT_INT(config->sequential, 0);
+    DEFAULT_INT(config->verbose,    0);
 
         // DAAPPER_DBFILE
     DEFAULT_STR(config->dbfile, "/tmp/songs.db");

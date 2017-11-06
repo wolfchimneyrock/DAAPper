@@ -8,6 +8,7 @@ typedef struct config_t {
     int   timeout;
     int   buffercap;
     int   verbose;
+    int   sequential;
 	char *name;
 	char *root;
 	char *dbfile;
