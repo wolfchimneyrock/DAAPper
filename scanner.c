@@ -266,8 +266,6 @@ static int execute_scan(app *aux, char *path) {
             else name = node->fts_name;
             int parent = PTR_TO_INT(vector_peekback(&parents));
             int this = db_upsert_path(aux, strdup(name), parent);
-            //printf("[%d -> %d] %s : %s \n", parent, this, path, name);
-            //fsw_add_path(aux->fd, path);
             dir_count++;
             vector_pushback(&parents, INT_TO_PTR(this));
         }
@@ -320,7 +318,6 @@ void  *scanner_thread(void *arg) {
     wait_for_watcher();
     
     syslog(LOG_INFO, "scanner thread active.\n");   
-    state.fd = watcher_fd;
 
     if (conf->fullscan || count_all_files(&state) == 0) {
         syslog(LOG_INFO, "initiating full scan...\n");

@@ -38,7 +38,7 @@ static void main_cleanup(void *arg) {
     syslog(LOG_INFO, "main thread terminated.\n");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:B:S";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -50,6 +50,7 @@ static struct option long_options[] = {
     { "timeout",            required_argument, 0,       'T' },
     { "buffer-capacity",    required_argument, 0,       'B' },
     { "sequential",         no_argument,       0,       'S' },
+    { "cache-stripes",      required_argument, 0,       'C' },
     { 0, 0, 0, 0 }
 };
 
@@ -81,6 +82,7 @@ int main (int argc, char *argv[]) {
     conf.sequential   = -1;
     conf.userid       = NULL;
     conf.fullscan     = -1;
+    conf.cachestripes = -1;
     conf.server_name  = hostname;
     conf.library_name = NULL;
 
@@ -115,6 +117,8 @@ int main (int argc, char *argv[]) {
             case 'B': INTARG(conf.buffercap, "buffer-capacity");
                       break;
             case 'S': conf.sequential = 1;
+                      break;
+            case 'C': INTARG(conf.cachestripes, "cache-stripes");
                       break;
             default:
                       exit(1);
@@ -157,7 +161,7 @@ int main (int argc, char *argv[]) {
     getrlimit(RLIMIT_NOFILE, &fd_limit);
     fd_limit.rlim_cur = fd_limit.rlim_max;
     setrlimit(RLIMIT_NOFILE, &fd_limit);
-    file_cache = cache_init(4096, 0, create_segment, NULL);
+    file_cache = cache_init(4096, conf.cachestripes, create_segment, NULL);
 
 
 // WRITER thread:

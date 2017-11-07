@@ -12,7 +12,7 @@ typedef struct app_parent {
 } app_parent;
 
 typedef struct app {
-    int          fd;    
+    void *          fd;    
     app_parent   *parent;
     evbase_t     *base;
     sqlite3      *db;

@@ -22,7 +22,8 @@ void get_config(config_t *config, char *cfg_file) {
 		CFG_SIMPLE_INT("port",         &(config->port)),
 		CFG_SIMPLE_INT("threads",      &(config->threads)),
 		CFG_SIMPLE_INT("timeout",      &(config->timeout)),
-        CFG_SIMPLE_INT("sequential",   &(config->sequential)),
+        CFG_SIMPLE_BOOL("sequential",  &(config->sequential)),
+        CFG_SIMPLE_INT("stripes",      &(config->cachestripes)),
 		CFG_SIMPLE_STR("name",         &(config->name)),
 		CFG_SIMPLE_STR("root",         &(config->root)),
 		CFG_SIMPLE_STR("dbfile",       &(config->dbfile)),
@@ -41,6 +42,7 @@ void get_config(config_t *config, char *cfg_file) {
     DEFAULT_INT(config->fullscan,   0);
     DEFAULT_INT(config->buffercap,  256);
     DEFAULT_INT(config->sequential, 0);
+    DEFAULT_INT(config->cachestripes, 0);
     DEFAULT_INT(config->verbose,    0);
 
         // DAAPPER_DBFILE

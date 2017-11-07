@@ -24,11 +24,13 @@
 #include "stream.h"
 
 #define CHUNK_DELAY  100
-#define CHUNK_SIZE   256*1024
+//#define CHUNK_SIZE   256*1024
+#define CHUNK_SIZE   0
 #define PRELOAD_SIZE 2048*1024
 CACHE *file_cache = NULL;
 
 void *create_segment(int id, void *a) {
+	syslog(LOG_INFO, "    create_segment()");
     app *aux = (app *)a;
     int ret;
     sqlite3_stmt *stmt = aux->stmts[Q_GET_PATH];
@@ -47,7 +49,7 @@ void *create_segment(int id, void *a) {
     const char *path = sqlite3_column_text(stmt, 0);
     int fd = open(path, O_RDONLY); 
     struct stat st;
-    fstat(fd, &st);
+    if(fstat(fd, &st)) return NULL;
     if (st.st_size > 0) {
         CACHENODE *cn = malloc(sizeof(CACHENODE));
         cn->size = st.st_size;
@@ -87,15 +89,16 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
     if (st->conn->request == st->req) {
         if (st->offset >= st->size) {
             // no more chunks - clean up
-
+		syslog(LOG_INFO, "    file %d finished sending chunks", st->id);
             evhtp_send_reply_chunk_end(st->req);
             event_free(st->timer);
-            if (st->buf) {
-                evbuffer_drain(st->buf, -1);
+            //if (st->buf) {
+                //evbuffer_drain(st->buf, -1);
                 evbuffer_free(st->buf);
-            }
+            //}
             free(st);
         } else {
+		syslog(LOG_INFO, "    file %d sending chunk %d", st->id, st->current);
             size_t size = st->size - st->offset;
             st->current++;
             if (size > CHUNK_SIZE)
@@ -109,7 +112,8 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
         // another request supercedes this one, stop sending chunks and clean up
         syslog(LOG_INFO, "    file %d interrupted at chunk %lu\n", st->id, st->current);
         if (st->buf) {
-            evbuffer_drain(st->buf, -1);
+            while (evbuffer_get_length(st->buf))
+                evbuffer_drain(st->buf, -1);
             evbuffer_free(st->buf);
         }
         free(st);
@@ -150,6 +154,7 @@ void res_stream_item(evhtp_request_t *req, void *a) {
         st->buf = evbuffer_new();
         int entire = 0;
         if (CHUNK_SIZE <= 0) {
+		syslog(LOG_INFO, "    thread %d sending entire file", st->id);
             entire = 1;
             evbuffer_add_file_segment(req->buffer_out, st->data, st->offset, st->size);
             st->offset += st->size;

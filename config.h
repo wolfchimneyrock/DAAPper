@@ -9,6 +9,7 @@ typedef struct config_t {
     int   buffercap;
     int   verbose;
     int   sequential;
+    int   cachestripes;
 	char *name;
 	char *root;
 	char *dbfile;

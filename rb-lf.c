@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <errno.h>
+#include <string.h>
 #include "ringbuffer.h"
 #include "util.h"
 

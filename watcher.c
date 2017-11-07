@@ -152,7 +152,6 @@ void *watcher_thread(void *arg) {
     wait_for_writer();
     pthread_cleanup_push(watcher_cleanup, &state);
     state.fd = fsw_init_session(system_default_monitor_type);
-    watcher_fd = state.fd;
 // open our own database connection read-only
     db_open_database(&state, SQLITE_OPEN_READONLY); 
     precompile_statements(&state);  
