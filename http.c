@@ -640,13 +640,6 @@ void res_group_list(evhtp_request_t *req, void *a) {
 
 void register_callbacks(evhtp_t *evhtp) {
     syslog(LOG_INFO, "registering callbacks...\n");
-// static callbacks can be registered in any order
-evhtp_set_cb(evhtp, "/login",         res_login,         "login"         );
-evhtp_set_cb(evhtp, "/logout",        res_logout,        "logout"        );
-evhtp_set_cb(evhtp, "/update",        res_update,        "update"        );
-evhtp_set_cb(evhtp, "/databases",     res_database_list, "database list" );
-evhtp_set_cb(evhtp, "/content-codes", res_content_codes, "content codes" );
-evhtp_set_cb(evhtp, "/server-info",   res_server_info,   "server info"   );
 
 // regex callbacks must be registered in correct order: most specific first
 evhtp_set_regex_cb(evhtp, 
@@ -681,5 +674,12 @@ evhtp_set_regex_cb(evhtp,
                    DB_STR REG_NUM "/groups", 
                    res_group_list, 
                    "group list");
+// static callbacks can be registered in any order
+evhtp_set_cb(evhtp, "/login",         res_login,         "login"         );
+evhtp_set_cb(evhtp, "/logout",        res_logout,        "logout"        );
+evhtp_set_cb(evhtp, "/update",        res_update,        "update"        );
+evhtp_set_cb(evhtp, "/databases",     res_database_list, "database list" );
+evhtp_set_cb(evhtp, "/content-codes", res_content_codes, "content codes" );
+evhtp_set_cb(evhtp, "/server-info",   res_server_info,   "server info"   );
 evhtp_set_cb(evhtp, "/", server_xmlrpc, "unassigned");
 }
