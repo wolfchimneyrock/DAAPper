@@ -3,6 +3,7 @@
 #include "scratch.h"
 #include <evhtp/evhtp.h>
 #include <sqlite3.h>
+#include <libfswatch/c/libfswatch.h>
 #include "config.h"
 
 typedef struct app_parent {
@@ -12,7 +13,7 @@ typedef struct app_parent {
 } app_parent;
 
 typedef struct app {
-    void *          fd;    
+    FSW_HANDLE          fd;    
     app_parent   *parent;
     evbase_t     *base;
     sqlite3      *db;
