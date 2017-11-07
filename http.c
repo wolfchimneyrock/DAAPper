@@ -95,7 +95,6 @@ void add_headers_out(evhtp_request_t *req) {
 
 // generic response for unassigned uri
 void server_xmlrpc(evhtp_request_t *req, void *a) {
-    const char *str = a;
     log_request(req, a);
     evhtp_send_reply(req, EVHTP_RES_OK);
     syslog(LOG_INFO, "received request %s: %s - %s\n", 

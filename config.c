@@ -27,7 +27,6 @@ void get_config(config_t *config, char *cfg_file) {
 		CFG_SIMPLE_STR("name",         &(config->name)),
 		CFG_SIMPLE_STR("root",         &(config->root)),
 		CFG_SIMPLE_STR("dbfile",       &(config->dbfile)),
-		CFG_SIMPLE_STR("extfile",      &(config->extfile)),
 		CFG_SIMPLE_BOOL("fullscan",    &(config->fullscan)),
 		CFG_END()
 	};
@@ -47,8 +46,6 @@ void get_config(config_t *config, char *cfg_file) {
 
         // DAAPPER_DBFILE
     DEFAULT_STR(config->dbfile, "/tmp/songs.db");
-        // DAAPPER_EXTFILE
-    DEFAULT_STR(config->extfile, "/usr/lib/sqlite3/closure.so");
         // DAAPPER_ROOT
     DEFAULT_STR(config->root, "/srv/music");
         // DAAPPER_USER

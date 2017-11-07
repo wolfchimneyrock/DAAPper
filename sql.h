@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 #include <event2/buffer.h>
 #include <evhtp/evhtp.h>
+#include "sqlite3ext.h"
 #include "config.h"
 #include "meta.h"
 #include "vector.h"
@@ -12,6 +13,7 @@
 #define STR(x) (x ? x : "")
 #define EMPTY_STRLIST { 0 }
 
+int sqlite3_closure_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *aApi);
 // t_type should be in order of key dependency
 typedef enum t_type {
     T_ARTISTS = 0,

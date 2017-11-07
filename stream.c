@@ -98,7 +98,7 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
             //}
             free(st);
         } else {
-		syslog(LOG_INFO, "    file %d sending chunk %d", st->id, st->current);
+		syslog(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
             size_t size = st->size - st->offset;
             st->current++;
             if (size > CHUNK_SIZE)

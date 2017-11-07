@@ -13,7 +13,6 @@ typedef struct config_t {
 	char *name;
 	char *root;
 	char *dbfile;
-    char *extfile;
 	char *server_name;
 	char *library_name;
 	char *userid;

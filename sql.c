@@ -427,6 +427,8 @@ int db_open_database(app *aux, int flags) {
         return ret;
     } else
         syslog(LOG_INFO, "thread opened database \n");
+
+    /*
     sqlite3_enable_load_extension(aux->db, 1);
     char *error = NULL;
     ret = sqlite3_load_extension(aux->db, 
@@ -434,6 +436,13 @@ int db_open_database(app *aux, int flags) {
     if (ret != SQLITE_OK) {
         syslog(LOG_ERR, "failed to load sqlite extension: %s.\n", error);
         exit(1);
+        return ret;
+    }
+    */
+    char *error;
+    ret = sqlite3_closure_init(aux->db, &error, NULL);
+    if (ret != SQLITE_OK) {
+        syslog(LOG_ERR, "SQLITE failed to load extension: %s", error);
         return ret;
     }
 

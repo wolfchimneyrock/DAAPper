@@ -72,7 +72,6 @@ int main (int argc, char *argv[]) {
 
 // empty config values.  if not set by cmdline args, then will be set by get_config()
     conf.dbfile       = NULL;
-    conf.extfile      = NULL;
     conf.port         = -1;
     conf.threads      = -1;
     conf.timeout      = -1;
