@@ -167,6 +167,7 @@ void *cache_set_and_get(CACHE *c, int key, void *a) {
         if (result == NULL) {
             // cache miss, we want to try to CAS
             int success = __sync_bool_compare_and_swap(&c->map[key], result, _UPDATING);
+	    __sync_synchronize();
             if (success) { 
                 // we won the race to create the resource, now no one should try to edit it until we done
                 return c->map[key] = (*c->create)(key, a);
@@ -178,6 +179,7 @@ void *cache_set_and_get(CACHE *c, int key, void *a) {
             }
         } else {
             _exponential_backoff(&c->map[key], _UPDATING);
+	    __sync_synchronize();
             return c->map[key];
         }
     }   
