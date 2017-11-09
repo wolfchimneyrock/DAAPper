@@ -24,8 +24,8 @@
 #include "stream.h"
 
 #define CHUNK_DELAY  100
-//#define CHUNK_SIZE   256*1024
-#define CHUNK_SIZE   0
+#define CHUNK_SIZE   256*1024
+//#define CHUNK_SIZE   0
 #define PRELOAD_SIZE 2048*1024
 CACHE *file_cache = NULL;
 
@@ -92,13 +92,13 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
 		syslog(LOG_INFO, "    file %d finished sending chunks", st->id);
             evhtp_send_reply_chunk_end(st->req);
             event_free(st->timer);
-            //if (st->buf) {
-                //evbuffer_drain(st->buf, -1);
+            if (st->buf) {
+                evbuffer_drain(st->buf, -1);
                 evbuffer_free(st->buf);
-            //}
+            }
             free(st);
         } else {
-		syslog(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
+		//syslog(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
             size_t size = st->size - st->offset;
             st->current++;
             if (size > CHUNK_SIZE)
@@ -152,6 +152,7 @@ void res_stream_item(evhtp_request_t *req, void *a) {
         st->current = 0;
         st->conn    = conn;
         st->buf = evbuffer_new();
+        evbuffer_set_flags(st->buf, EVBUFFER_FLAG_DRAINS_TO_FD);
         int entire = 0;
         if (CHUNK_SIZE <= 0) {
 		syslog(LOG_INFO, "    thread %d sending entire file", st->id);
