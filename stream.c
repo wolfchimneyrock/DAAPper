@@ -23,10 +23,10 @@
 #include "cache.h"
 #include "stream.h"
 
-#define CHUNK_DELAY  100
-#define CHUNK_SIZE   256*1024
+#define CHUNK_DELAY  1
+#define CHUNK_SIZE   16*1024
 //#define CHUNK_SIZE   0
-#define PRELOAD_SIZE 2048*1024
+#define PRELOAD_SIZE 64*1024
 CACHE *file_cache = NULL;
 
 void *create_segment(int id, void *a) {
@@ -89,7 +89,7 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
     if (st->conn->request == st->req) {
         if (st->offset >= st->size) {
             // no more chunks - clean up
-		syslog(LOG_INFO, "    file %d finished sending chunks", st->id);
+		    //syslog(LOG_INFO, "    file %d finished sending chunks", st->id);
             evhtp_send_reply_chunk_end(st->req);
             event_free(st->timer);
             if (st->buf) {
@@ -121,10 +121,24 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
     //close(fd);
     //return EVHTP_RES_OK;
 }
+void add_stream_headers_out(evhtp_request_t *req) {
+    
+    evhtp_headers_add_header(req->headers_out,
+          evhtp_header_new("Accept-Ranges", "bytes", 0, 0));
+    evhtp_headers_add_header(req->headers_out,
+          evhtp_header_new("Content-Type", "audio/*", 0, 0));
+    evhtp_headers_add_header(req->headers_out,
+          evhtp_header_new("Cache-Control", "no-cache", 0, 0));
+    evhtp_headers_add_header(req->headers_out,
+          evhtp_header_new("Expires", "-1", 0, 0));
+ //   evhtp_headers_add_header(req->headers_out,
+ //         evhtp_header_new("Connection", "keep-alive", 0, 0));
+
+}
 
 void res_stream_item(evhtp_request_t *req, void *a) {
     log_request(req, a);
-    add_headers_out(req);
+    add_stream_headers_out(req);
     ADD_DATE_HEADER("Date");
     evhtp_connection_t *conn = evhtp_request_get_connection(req);
     evthr_t *thread          = conn->thread;
@@ -170,8 +184,10 @@ void res_stream_item(evhtp_request_t *req, void *a) {
             st->offset += size;
         }
         if (entire) {
+            req->flags |= EVHTP_REQ_FLAG_KEEPALIVE;
             evhtp_send_reply(req, EVHTP_RES_OK);
-        } else {
+        } else {    
+            req->flags |= EVHTP_REQ_FLAG_CHUNKED | EVHTP_REQ_FLAG_KEEPALIVE;
             st->timer  = evtimer_new(aux->base, stream_item_chunk_cb, st);
             evhtp_send_reply_chunk_start(req, EVHTP_RES_OK);
             schedule_next_chunk(st, 0);
