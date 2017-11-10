@@ -93,3 +93,32 @@ void *rb_popfront(RINGBUFFER *rb) {
         return result;
     }
 }
+
+int rb_drain(RINGBUFFER *rb, void **dest, size_t max) {
+
+	int ret;
+	size_t count;
+	while (rb) {
+		pthread_testcancel();
+		ret = sem_wait(&rb->filled_sem);
+		if (ret == -1 && errno == EINTR) continue;
+		count = 1;
+		while ( count < max) {
+			ret = sem_trywait(&rb->filled_sem);
+			if (ret == -1 && errno == EINTR) continue;
+			if (ret == -1 && errno == EAGAIN) break;
+			count++;
+		}
+		pthread_mutex_lock(&rb->buffer_mutex);
+		for (int i = 0; i < count; i++) {
+			dest[i] = (rb->data)[rb->head];
+			rb->head = (rb->head + 1) % rb->cap;
+			rb->used--;
+		}
+		pthread_mutex_unlock(&rb->buffer_mutex);
+		for (int i = 0; i < count; i++)
+			sem_post(&rb->empty_sem);
+		return count;
+	}
+	return -1;
+}		
