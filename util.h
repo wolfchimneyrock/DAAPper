@@ -3,8 +3,11 @@
 #include "scratch.h"
 #include <evhtp/evhtp.h>
 #include <sqlite3.h>
+
+typedef enum fsw_event_flag fsw_event_flag;
 #include <libfswatch/c/libfswatch.h>
 #include "config.h"
+
 
 typedef struct app_parent {
     evhtp_t  *htp;
