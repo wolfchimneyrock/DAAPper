@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fts.h>
+#include "util.h"
 #include <libfswatch/c/libfswatch.h>
 #include <sqlite3.h>
 #include "config.h"
@@ -19,7 +20,6 @@
 #include "system.h"
 #include "id3cb.h"
 #include "scratch.h"
-#include "util.h"
 
 #define WATCH_SLEEP_INTERVAL 1000
 #define META_SCRATCH_SIZE    4096

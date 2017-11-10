@@ -5,12 +5,12 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "util.h"
 #include <libfswatch/c/libfswatch.h>
 #include <unistd.h>
 #include <string.h>
 #include <fts.h>
 #include <sqlite3.h>
-#include "util.h"
 #include "config.h"
 #include "id3cb.h"
 #include "ringbuffer.h"
