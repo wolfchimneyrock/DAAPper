@@ -461,6 +461,10 @@ void *writer_thread(void *arg) {
     pthread_cleanup_push(writer_cleanup, &state);
 // initialize ringbuffer
     writer_buffer = rb_init(conf->buffercap);
+    if (!writer_buffer) {
+        syslog(LOG_ERR, "failed to init writer_buffer[%d]!", conf->buffercap);
+        exit(1);
+    }
 // initialize semaphore for database write results
     sem_init(&db_return_int_sem, 0, 0);
     int ret;
@@ -500,7 +504,8 @@ void *writer_thread(void *arg) {
             }
         } else {
             query_t **q = rb_popfront(writer_buffer);
-            execute_write_query(&state, q);
+            if(q)
+                execute_write_query(&state, q);
         }
     }
     pthread_cleanup_pop(cleanup_pop_val);
