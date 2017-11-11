@@ -22,6 +22,7 @@ void get_config(config_t *config, char *cfg_file) {
 		CFG_SIMPLE_INT("port",         &(config->port)),
 		CFG_SIMPLE_INT("threads",      &(config->threads)),
 		CFG_SIMPLE_INT("timeout",      &(config->timeout)),
+	CFG_SIMPLE_INT("buffer-capacity", &(config->buffercap)),
         CFG_SIMPLE_BOOL("sequential",  &(config->sequential)),
         CFG_SIMPLE_INT("stripes",      &(config->cachestripes)),
 		CFG_SIMPLE_STR("name",         &(config->name)),

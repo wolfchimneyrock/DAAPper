@@ -1,21 +1,22 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
+#include <confuse.h>
 
 typedef struct config_t {
-	int   port;
-	int   threads;
-	int   fullscan;
-    int   timeout;
-    int   buffercap;
-    int   verbose;
-    int   sequential;
-    int   cachestripes;
-	char *name;
-	char *root;
-	char *dbfile;
-	char *server_name;
-	char *library_name;
-	char *userid;
+    long   port;
+    long   threads;
+    long   timeout;
+    long   buffercap;
+    cfg_bool_t   fullscan;
+    cfg_bool_t   verbose;
+    cfg_bool_t   sequential;
+    long   cachestripes;
+    char *name;
+    char *root;
+    char *dbfile;
+    char *server_name;
+    char *library_name;
+    char *userid;
 } config_t;
 
 extern config_t config;
