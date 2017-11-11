@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -33,35 +34,33 @@ void *create_segment(int id, void *a) {
 	syslog(LOG_INFO, "    create_segment()");
     app *aux = (app *)a;
     int ret;
+    CACHENODE *cn = NULL;
     sqlite3_stmt *stmt = aux->stmts[Q_GET_PATH];
     ret = sqlite3_bind_int(stmt, 1, id);
     if (ret != SQLITE_OK) {
         syslog(LOG_ERR, "error binding value: '%d'\n", id);
-        sqlite3_reset(stmt);
-        return NULL;
+        goto error;
     }
     ret = sqlite3_step(stmt);
     if (ret != SQLITE_ROW) {
         syslog(LOG_ERR, "error retrieving file path for item %d\n", id);
-        sqlite3_reset(stmt);
-        return NULL;
+        goto error;
     }
     const char *path = sqlite3_column_text(stmt, 0);
     int fd = open(path, O_RDONLY); 
     struct stat st;
-    if(fstat(fd, &st)) return NULL;
+    if(fstat(fd, &st)) goto error;
     if (st.st_size > 0) {
-        CACHENODE *cn = malloc(sizeof(CACHENODE));
+        cn = malloc(sizeof(CACHENODE));
         cn->size = st.st_size;
         cn->file_segment = evbuffer_file_segment_new(
                 fd, 0, st.st_size, 
                 EVBUF_FS_CLOSE_ON_FREE
                 );
-        sqlite3_reset(stmt);
-        return cn;
     }
+error:
     sqlite3_reset(stmt);
-    return NULL;
+    return cn;
 }
 
 typedef struct stream_t {
