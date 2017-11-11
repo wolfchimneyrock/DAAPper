@@ -478,6 +478,7 @@ void precompile_statements(void *arg) {
 }
 
 int db_find_path_with_parent(app *aux, const char *path, const int parent, SCRATCH *s) {
+
     sqlite3_stmt *stmt = aux->stmts[Q_GET_SONG_PATH_WITH_PARENT];
     int ret;
     ret = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_STATIC);

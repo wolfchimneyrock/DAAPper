@@ -16,7 +16,8 @@ typedef struct app_parent {
 } app_parent;
 
 typedef struct app {
-    FSW_HANDLE          fd;    
+    FSW_HANDLE    fd;    
+    int           thread_id;
     app_parent   *parent;
     evbase_t     *base;
     sqlite3      *db;
