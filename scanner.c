@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdint.h>
 #include <syslog.h>
 #include <pthread.h>
@@ -32,7 +33,7 @@ static CACHE *file_cache;
 volatile sig_atomic_t   scanner_active      = 0;
 static pthread_mutex_t  scanner_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t   scanner_ready       = PTHREAD_COND_INITIALIZER; 
-static RINGBUFFER      *scanner_buffer;
+RINGBUFFER      *scanner_buffer;
 
 void wait_for_scanner() {
     pthread_mutex_lock(&scanner_ready_mutex);
@@ -243,12 +244,17 @@ static int execute_scan(app *aux, char *path) {
     SCRATCH *meta_scratch = scratch_new(META_SCRATCH_SIZE);
     size_t file_count = 0;
     size_t dir_count  = 0;
-    FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_NOSTAT, 0);
+    //FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_NOSTAT, 0);
+    FTS *tree = fts_open(paths, FTS_LOGICAL, 0);
+    if (!tree) {
+        syslog(LOG_ERR, "    error opening fts tree!");
+        exit(1);
+    }
     FTSENT *node;
        
     while (node = fts_read(tree)) {
         if (node->fts_info & FTS_F) { // visiting a file
-            syslog(LOG_INFO, "found file '%s'\n", node->fts_name);
+            //syslog(LOG_INFO, "    found file '%s'\n", node->fts_name);
                 //fts_set(tree, node, FTS_SKIP);
             meta_info_t *meta = scratch_get(meta_scratch, sizeof(meta_info_t));
             int parent =  PTR_TO_INT(vector_peekback(&parents));
@@ -266,6 +272,7 @@ static int execute_scan(app *aux, char *path) {
             else name = node->fts_name;
             int parent = PTR_TO_INT(vector_peekback(&parents));
             int this = db_upsert_path(aux, strdup(name), parent);
+	    syslog(LOG_INFO, "        [%4d] %s", this, name);
             dir_count++;
             vector_pushback(&parents, INT_TO_PTR(this));
         }
@@ -301,7 +308,10 @@ void  *scanner_thread(void *arg) {
     pthread_cleanup_push(scanner_cleanup, &state);
 
     scanner_buffer = rb_init(BUFFER_CAPACITY);
-
+    if (!scanner_buffer) {
+	syslog(LOG_ERR, "failed to initialize scanner buffer");
+	exit(1);
+    }
     int ret;
     
     wait_for_writer();
