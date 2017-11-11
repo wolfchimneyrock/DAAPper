@@ -30,7 +30,7 @@ void log_request(evhtp_request_t *req, void *a) {
     printable_ipaddress((struct sockaddr_in *)req->conn->saddr, ipaddr);
     const char *ua  = evhtp_kv_find(req->headers_in, "User-Agent");
     syslog(LOG_INFO, "%s [%s]{%d} requested %s: %s%s\n", 
-            ipaddr, ua, aux->fd, (char *)a, req->uri->path->path,
+            ipaddr, ua, aux->thread_id, (char *)a, req->uri->path->path,
             req->uri->path->file);
     evhtp_kv_t *kv;
 }

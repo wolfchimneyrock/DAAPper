@@ -49,7 +49,7 @@ void app_init_thread(evhtp_t *htp, evthr_t *thread, void *arg) {
     app *aux = malloc(sizeof(app));
         
     pthread_mutex_lock(&threads_mutex);
-    aux->fd = ++threads;
+    aux->thread_id = ++threads;
     pthread_mutex_unlock(&threads_mutex);
 
     aux->parent = parent;
