@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sqlite3.h>
-#include <syslog.h>
 #include <event2/util.h>
 #include <evhtp/evhtp.h>
 #include <time.h>
+#include "system.h"
 #include "vector.h"
 #include "sql.h"
 #include "meta.h"
@@ -79,9 +79,8 @@ const sql_t queries[] = {
 */
     { "Q_PLAYCOUNT_INC",
         "WITH new (song, time_requested) as ( VALUES(?, ?) ) \n"\
-        "INSERT INTO plays(song, time_requested, time_processed) \n"\
-        "SELECT new.song, new.time_requested, \n"\
-        "cast((julianday('now') - 2440587.49999999)*86400000000 as integer) \n"\
+        "INSERT INTO plays(song) \n"\
+        "SELECT new.song \n"\
         "FROM new;"
     },
     { "Q_CHANGE_PATH",
@@ -316,7 +315,7 @@ const sql_t tables[] = {
     { "paths", 
         "CREATE TABLE IF NOT EXISTS paths (\n"\
         "    id            INTEGER PRIMARY KEY NOT NULL,\n"\
-        "    parent        INTEGER NOT NULL,\n"\
+        "    parent        INTEGER,\n"\
         "    path          VARCHAR(255) NOT NULL,\n"\
         "    ts            TIMESTAMP DEFAULT CURRENT_TIMESTAMP, \n"\
         "    UNIQUE(path, parent) \n"\
@@ -334,7 +333,8 @@ const sql_t tables[] = {
         "    tablename=paths,\n"\
         "    idcolumn=id,\n"\
         "    parentcolumn=parent\n"\
-        ");"
+        "); \n"
+        //"CREATE INDEX IF NOT EXISTS Tidx1 on pathtree(parent);"
     },
     { "genres",     
         "CREATE TABLE IF NOT EXISTS genres (\n"\
@@ -410,8 +410,6 @@ const sql_t tables[] = {
         "CREATE TABLE IF NOT EXISTS plays (\n"\
         "    id             INTEGER PRIMARY KEY NOT NULL, \n"\
         "    song           INTEGER NOT NULL, \n"\
-        "    time_requested INTEGER, \n"\
-        "    time_processed INTEGER, \n"\
         "    ts             TIMESTAMP DEFAULT CURRENT_TIMESTAMP \n"\
         ");"
     },
@@ -422,11 +420,11 @@ int db_open_database(app *aux, int flags) {
     int ret;
     ret = sqlite3_open_v2((aux->config)->dbfile, &aux->db, flags, NULL);
     if (ret) {
-        syslog(LOG_ERR, "thread couldn't open database\n");
+        LOGGER(LOG_ERR, "thread couldn't open database");
         exit(1);
         return ret;
     } else
-        syslog(LOG_INFO, "thread opened database \n");
+        LOGGER(LOG_INFO, "thread opened database");
 
     /*
     sqlite3_enable_load_extension(aux->db, 1);
@@ -434,7 +432,7 @@ int db_open_database(app *aux, int flags) {
     ret = sqlite3_load_extension(aux->db, 
             (aux->config)->extfile, NULL, &error);
     if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "failed to load sqlite extension: %s.\n", error);
+        LOGGER(LOG_ERR, "failed to load sqlite extension: %s.", error);
         exit(1);
         return ret;
     }
@@ -442,12 +440,33 @@ int db_open_database(app *aux, int flags) {
     char *error;
     ret = sqlite3_closure_init(aux->db, &error, NULL);
     if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "SQLITE failed to load extension: %s", error);
+        LOGGER(LOG_ERR, "SQLITE failed to load extension: %s", error);
         return ret;
     }
 
     ret = sqlite3_exec(aux->db, "PRAGMA foreign_keys = ON;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "SQLITE failed to set foreign_keys = ON: %s", error);
+        return ret;
+    }
+    ret = sqlite3_exec(aux->db, "PRAGMA temp_store = MEMORY;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "SQLITE failed to set temp_store = MEMORY: %s", error);
+        return ret;
+    }
+    ret = sqlite3_exec(aux->db, "PRAGMA synchronous = OFF;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "SQLITE failed to set synchronous = OFF: %s", error);
+        return ret;
+    }
 
+/*
+    ret = sqlite3_exec(aux->db, "CREATE VIRTUAL TABLE temp.closure USING transitive_closure;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "SQLITE failed to create temp.closure table: %s", error);
+        return ret;
+    }
+*/
     return ret;
 }
 int db_close_database(app *aux) {
@@ -456,7 +475,7 @@ int db_close_database(app *aux) {
         sqlite3_finalize(aux->stmts[q]);
     ret = sqlite3_close_v2(aux->db);
     if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "thread failed to close database.\n");
+        LOGGER(LOG_ERR, "thread failed to close database.");
     }
     return ret;
 }
@@ -471,8 +490,8 @@ void precompile_statements(void *arg) {
                       queries[q].query, -1, 
                       &(aux->stmts[q]), NULL)) == SQLITE_BUSY);
         if (ret != SQLITE_OK) 
-            syslog(LOG_INFO, 
-                   "precompiling query %s failed: %d\n", 
+            LOGGER(LOG_INFO, 
+                   "precompiling query %s failed: %d", 
                    queries[q].name, ret);
     }   
 }
@@ -522,7 +541,6 @@ int db_find_path(app *aux, const char *path,  SCRATCH *s) {
         sqlite3_bind_text(stmt, 2, p[i - 1], -1 , NULL);
         ret = sqlite3_step(stmt);
         result = sqlite3_column_int(stmt, 0);
-        syslog(LOG_INFO, "%d\n", result);
         ret = sqlite3_step(stmt);
         if (ret == SQLITE_ROW && i > 2) { 
 // we got dupicates again; try more specific query
@@ -533,7 +551,6 @@ int db_find_path(app *aux, const char *path,  SCRATCH *s) {
             sqlite3_bind_text(stmt, 3, p[i - 2], -1, NULL);
             ret = sqlite3_step(stmt);
             result = sqlite3_column_int(stmt, 0);
-            syslog(LOG_INFO, "%d\n", result);
             ret = sqlite3_step(stmt);
             if (ret == SQLITE_ROW && i > 3) { 
 // again dupicates, again try more specific
@@ -545,7 +562,6 @@ int db_find_path(app *aux, const char *path,  SCRATCH *s) {
                 sqlite3_bind_text(stmt, 3, p[i - 3], -1, NULL);
                 ret = sqlite3_step(stmt);
                 result = sqlite3_column_int(stmt, 0);
-                syslog(LOG_INFO, "%d\n", result);
                 ret = sqlite3_step(stmt);
                 if (ret == SQLITE_ROW) { 
 // this time just fail
@@ -686,7 +702,7 @@ size_t count_smart_items(app *aux, t_type table, vector *clauses, int *bindvar) 
     char *clause;
     int ret;
     size_t qty = 0;
-    syslog(LOG_INFO, "finding smart playlist items...\n");
+    LOGGER(LOG_INFO, "finding smart playlist items...");
     size_t len = strlen(queries[Q_COUNT_SMART].query) + 
                  strlen(table_strings[table]) + 2;
     if (clauses) {
@@ -708,7 +724,7 @@ size_t count_smart_items(app *aux, t_type table, vector *clauses, int *bindvar) 
     }
     strcat(sqlstr, ";");
     // now the query string is built
-    syslog(LOG_INFO, "query: %s\n", sqlstr);
+    LOGGER(LOG_INFO, "query: %s\n", sqlstr);
     ret = sqlite3_prepare_v2(aux->db, sqlstr, -1, &stmt, NULL);
     if (ret != SQLITE_OK) {
         free(sqlstr);
@@ -757,7 +773,7 @@ void sql_delete_file(sqlite3 *db, const char *path) {
     sqlite3_bind_text(stmt, 1, path, -1, SQLITE_TRANSIENT);
     ret = sqlite3_step(stmt);
     if (ret != SQLITE_DONE) {
-        syslog(LOG_ERR, "failed to delete file '%s' error %d.\n", path, ret);
+        LOGGER(LOG_ERR, "failed to delete file '%s' error %d.", path, ret);
     }
     sqlite3_finalize(stmt);
 }
@@ -853,7 +869,7 @@ void sql_build_query(query_t *q, vector *columns,
         default:
             break;
     }
-    syslog(LOG_INFO, "query: '%s'\n", *output);
+    LOGGER(LOG_INFO, "query: '%s'\n", *output);
 }
 
 int sql_put_results(

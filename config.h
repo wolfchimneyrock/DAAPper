@@ -19,7 +19,7 @@ typedef struct config_t {
     char *userid;
 } config_t;
 
-extern config_t config;
+extern config_t conf;
 
 void get_config(config_t *config, char *cfg_file);
 #endif

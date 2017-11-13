@@ -7,7 +7,6 @@
 #include <event2/util.h>
 #include <time.h>
 #include <unistd.h>
-#include <syslog.h>
 #include <sqlite3.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
@@ -35,7 +34,7 @@ static void main_cleanup(void *arg) {
     event_base_free(parent->base);
     watcher_active = 0;
     writer_active = 0;
-    syslog(LOG_INFO, "main thread terminated.\n");
+    LOGGER(LOG_INFO, "main thread terminated.");
 }
 
 static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:";
@@ -64,9 +63,7 @@ static struct option long_options[] = {
 
 
 int main (int argc, char *argv[]) {
-    int flag_daemonize = 0;
     char config_file[256] = "daapper.conf";
-    static config_t conf;
     char hostname[255];
     gethostname(hostname, 255);
 
@@ -129,7 +126,7 @@ int main (int argc, char *argv[]) {
     evbase_t *evbase;
     evhtp_t  *evhtp;
     app_parent parent;
-
+    
     get_config(&conf, config_file);
 
 // unix specific initialization in system.c
@@ -147,12 +144,12 @@ int main (int argc, char *argv[]) {
     res = sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
     //res = sqlite3_config(SQLITE_CONFIG_SERIALIZED);
     if (res != SQLITE_OK) {
-        syslog(LOG_ERR, "Failed to make SQLITE3 multithreaded");
+        LOGGER(LOG_ERR, "Failed to make SQLITE3 multithreaded");
     }
 
     res = sqlite3_enable_shared_cache(1);
     if (res != SQLITE_OK) {
-        syslog(LOG_ERR,  "failed to enable SQLITE3 shared cachen");
+        LOGGER(LOG_ERR,  "failed to enable SQLITE3 shared cachen");
     }
 
 
@@ -160,7 +157,7 @@ int main (int argc, char *argv[]) {
     getrlimit(RLIMIT_NOFILE, &fd_limit);
     fd_limit.rlim_cur = fd_limit.rlim_max;
     setrlimit(RLIMIT_NOFILE, &fd_limit);
-    file_cache = cache_init(4096, conf.cachestripes, create_segment, NULL);
+    file_cache = cache_init(6000, conf.cachestripes, create_segment, NULL);
 
 
 // WRITER thread:
@@ -186,9 +183,9 @@ int main (int argc, char *argv[]) {
 // the rest of this is boilerplate LIBEVENT / EVHTP for a multi 
 // threaded, thread-pooling HTTP server.  Application specific 
 // callbacks are located in http.c
-    syslog(LOG_INFO, "initialize event_base...\n");
+    LOGGER(LOG_INFO, "initialize event_base...");
     parent.base = event_base_new();
-    syslog(LOG_INFO, "initialize evhtp_base...\n");
+    LOGGER(LOG_INFO, "initialize evhtp_base...");
     parent.htp  = evhtp_new(parent.base, NULL);
     parent.config = &conf;
     register_callbacks(parent.htp);
@@ -205,15 +202,15 @@ int main (int argc, char *argv[]) {
     int socket = 0;
     if (argc > 1) socket = atoi(argv[1]);
     if (socket == 0) socket = conf.port;
-    syslog(LOG_INFO, "binding socket %d...\n", socket);
+    LOGGER(LOG_INFO, "binding socket %d...", socket);
     if ((res = evhtp_bind_socket(parent.htp, "0.0.0.0", socket, 2048)) 
             == -1) {
-        syslog(LOG_EMERG, "failed to bind socket error %d.\n", errno);
+        LOGGER(LOG_EMERG, "failed to bind socket error %d.", errno);
         evhtp_free(parent.htp);
         event_base_free(parent.base);
         exit(EXIT_FAILURE);
     }
-    syslog(LOG_INFO, "event loop...\n");
+    LOGGER(LOG_INFO, "event loop...");
     event_base_loop(parent.base, 0);
     pthread_cleanup_pop(cleanup_pop_val);
     return EXIT_SUCCESS;

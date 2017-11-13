@@ -1,6 +1,5 @@
 #define _GNU_SOURCE
 #include <stdint.h>
-#include <syslog.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -153,7 +152,7 @@ static int process_text_tags(const id3_text *text, void *aux) {
 }
 
 static int add_file(app *aux, const char *fname, const char *path, ID3CB *id3, SCRATCH *meta_scratch, int parent) {
-    syslog(LOG_INFO, "    add_file() %s/%s", path, fname);
+    LOGGER(LOG_INFO, "    add_file() %s/%s", path, fname);
     char *ext = strchr(fname, '.');
     if (ext && !strcmp(ext + 1, "mp3")) {
         int pathid = db_upsert_path(aux, fname, parent);
@@ -212,7 +211,7 @@ static int execute_scan(app *aux, char *path) {
     // instances.  also, we will open our own connection to the database, so that
     // if multiple scan directory threads are running
 
-
+    LOGGER(LOG_INFO, "execute_scan()");
     char *paths[2] = { 0 };
     vector parents;
     vector_new(&parents, 10); // unlikely to have a directory tree > 10 levels
@@ -224,18 +223,18 @@ static int execute_scan(app *aux, char *path) {
         // after executing this, we will have the parent
         char *fname = split_filename(parent_path);
         int root_parent;
-        if (strcmp(parent_path, aux->config->root)) 
+        if (strcmp(parent_path, conf.root)) 
             root_parent = db_find_path(aux, parent_path, path_scratch);
         else root_parent = 1;
-        syslog(LOG_INFO, "parent: [%d] %s\n", root_parent, parent_path);
+        LOGGER(LOG_INFO, "parent: [%d] %s", root_parent, parent_path);
         vector_pushback(&parents, INT_TO_PTR(root_parent));
         scratch_free(path_scratch, SCRATCH_FREE);
     } else {
         searching_root = 1;
-        paths[0] = aux->config->root;
+        paths[0] = conf.root;
     }
 
-    syslog(LOG_INFO, "scanning '%s'\n", paths[0]);
+    LOGGER(LOG_INFO, "scanning '%s'", paths[0]);
     ID3CB *id3 = id3_new_parser(ID3_AUTOCONVERT_TO_UTF8);
 
     id3_set_all_texts_handler(id3, process_text_tags);
@@ -247,14 +246,14 @@ static int execute_scan(app *aux, char *path) {
     //FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_NOSTAT, 0);
     FTS *tree = fts_open(paths, FTS_LOGICAL, 0);
     if (!tree) {
-        syslog(LOG_ERR, "    error opening fts tree!");
+        LOGGER(LOG_ERR, "    error opening fts tree!");
         exit(1);
     }
     FTSENT *node;
        
     while (node = fts_read(tree)) {
         if (node->fts_info & FTS_F) { // visiting a file
-            //syslog(LOG_INFO, "    found file '%s'\n", node->fts_name);
+            //LOGGER(LOG_INFO, "    found file '%s'", node->fts_name);
                 //fts_set(tree, node, FTS_SKIP);
             meta_info_t *meta = scratch_get(meta_scratch, sizeof(meta_info_t));
             int parent =  PTR_TO_INT(vector_peekback(&parents));
@@ -272,7 +271,7 @@ static int execute_scan(app *aux, char *path) {
             else name = node->fts_name;
             int parent = PTR_TO_INT(vector_peekback(&parents));
             int this = db_upsert_path(aux, strdup(name), parent);
-	    syslog(LOG_INFO, "        [%4d] %s", this, name);
+	    LOGGER(LOG_INFO, "        [%4d] %s", this, name);
             dir_count++;
             vector_pushback(&parents, INT_TO_PTR(this));
         }
@@ -285,7 +284,7 @@ static int execute_scan(app *aux, char *path) {
     //scratch_free(path_scratch, SCRATCH_FREE);
     id3_dispose_parser(id3);
     vector_free(&parents);
-    syslog(LOG_INFO, "scanned %lu files in %lu directories.\n", file_count, dir_count);
+    LOGGER(LOG_INFO, "scanned %lu files in %lu directories.", file_count, dir_count);
 }
 
 static void scanner_cleanup(void *arg) {
@@ -294,22 +293,22 @@ static void scanner_cleanup(void *arg) {
 
     rb_free(scanner_buffer);
     db_close_database(state);
-    syslog(LOG_INFO, "scanner thread terminated.\n");
+    LOGGER(LOG_INFO, "scanner thread terminated.");
 }
 
 void  *scanner_thread(void *arg) {
-    syslog(LOG_INFO, "scanner thread starting...\n");
+    LOGGER(LOG_INFO, "scanner thread starting...");
     scanner_pid = pthread_self();
-    config_t *conf = (config_t *)arg;
+    //config_t *conf = (config_t *)arg;
     app state;
-    state.config = conf;
+    state.config = &conf;
 
     int cleanup_pop_val;
     pthread_cleanup_push(scanner_cleanup, &state);
-
-    scanner_buffer = rb_init(BUFFER_CAPACITY);
+    LOGGER(LOG_INFO, "scanner buffer = %d", conf.buffercap);
+    scanner_buffer = rb_init(conf.buffercap);
     if (!scanner_buffer) {
-	syslog(LOG_ERR, "failed to initialize scanner buffer");
+	LOGGER(LOG_ERR, "failed to initialize scanner buffer");
 	exit(1);
     }
     int ret;
@@ -318,7 +317,7 @@ void  *scanner_thread(void *arg) {
 
     db_open_database(&state, SQLITE_OPEN_READONLY);
     precompile_statements(&state);
-    syslog(LOG_INFO, "scanner opened db.\n");   
+    LOGGER(LOG_INFO, "scanner opened db.");   
 
     pthread_mutex_lock(&scanner_ready_mutex);
     scanner_active = 1;
@@ -327,10 +326,10 @@ void  *scanner_thread(void *arg) {
     
     wait_for_watcher();
     
-    syslog(LOG_INFO, "scanner thread active.\n");   
+    LOGGER(LOG_INFO, "scanner thread active.");   
 
-    if (conf->fullscan || count_all_files(&state) == 0) {
-        syslog(LOG_INFO, "initiating full scan...\n");
+    if (conf.fullscan || count_all_files(&state) == 0) {
+        LOGGER(LOG_INFO, "initiating full scan...");
         execute_scan(&state, NULL);
     }
     
@@ -338,7 +337,7 @@ void  *scanner_thread(void *arg) {
     while (scanner_active) {
         pthread_testcancel();
         char *path = rb_popfront(scanner_buffer);
-        syslog(LOG_INFO, "scanner got '%s'\n", path);
+        LOGGER(LOG_INFO, "scanner got '%s'", path);
         execute_scan(&state, path);
     }
 

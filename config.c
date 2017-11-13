@@ -1,10 +1,13 @@
+#define _GNU_SOURCE
 #include <locale.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <syslog.h>
 #include "confuse.h"
 #include "config.h"
 
-config_t config;
+config_t conf;
 
 #define DEFAULT_INT(x, v) { \
     if (x == -1) x = v;     \
@@ -46,7 +49,7 @@ void get_config(config_t *config, char *cfg_file) {
     DEFAULT_INT(config->verbose,    0);
 
         // DAAPPER_DBFILE
-    DEFAULT_STR(config->dbfile, "/tmp/songs.db");
+    DEFAULT_STR(config->dbfile, "file:songs?mode=memory&cache=shared");
         // DAAPPER_ROOT
     DEFAULT_STR(config->root, "/srv/music");
         // DAAPPER_USER
@@ -54,13 +57,17 @@ void get_config(config_t *config, char *cfg_file) {
         // LIBRARYNAME
     DEFAULT_STR(config->library_name, "Library");
 
-	char *cfg_path = cfg_file ? cfg_file : "/etc/daapper.conf";
-    printf("Using config file '%s'\n", cfg_file);
-	setlocale(LC_MESSAGES, "");
+    char *cfg_path = cfg_file ? cfg_file : "/etc/daapper.conf";
+    if (access(cfg_path, F_OK) != -1) {	
+        fprintf(stderr, "Using config file '%s'\n", cfg_path);
+        setlocale(LC_MESSAGES, "");
 	setlocale(LC_CTYPE, "");
-
 	cfg = cfg_init(opts, 0);
 	cfg_parse(cfg, cfg_path);
+    } else {
+        fprintf(stderr, "Using default configuration.\n");
+    }
+	
 }
 
 

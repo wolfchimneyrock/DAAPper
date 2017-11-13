@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <netinet/in.h>
 #include <evhtp/evhtp.h>
+#include "system.h"
 #include "util.h"
 #include "scratch.h"
 
@@ -29,7 +29,7 @@ void log_request(evhtp_request_t *req, void *a) {
     app *aux = (app *)evthr_get_aux(req->conn->thread);
     printable_ipaddress((struct sockaddr_in *)req->conn->saddr, ipaddr);
     const char *ua  = evhtp_kv_find(req->headers_in, "User-Agent");
-    syslog(LOG_INFO, "%s [%s]{%d} requested %s: %s%s\n", 
+    LOGGER(LOG_INFO, "%s [%s]{%d} requested %s: %s%s", 
             ipaddr, ua, aux->thread_id, (char *)a, req->uri->path->path,
             req->uri->path->file);
     evhtp_kv_t *kv;

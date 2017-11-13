@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <syslog.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -65,7 +64,7 @@ void library_change_cb(fsw_cevent const *const events,
 // the difficulty is that as a file is copied into a folder, 
 // it triggers multiple update events.
 // so we can't blindly respond to update events.
-        syslog(LOG_INFO, "[%d, %d] %s\n", 
+        LOGGER(LOG_INFO, "[%d, %d] %s", 
                          this_id, all_flags, events[i].path);
         switch(all_flags) {
             case Removed: {
@@ -73,24 +72,24 @@ void library_change_cb(fsw_cevent const *const events,
                 int pathid = db_find_path(state, events[i].path, s);
                 scratch_reset(s);
                 db_remove_file(pathid);
-                syslog(LOG_INFO, "removing file '%s'\n", events[i].path);
+                LOGGER(LOG_INFO, "removing file '%s'", events[i].path);
                           }
             break;
             case Created: {
-                syslog(LOG_INFO, "added file '%s'\n", events[i].path);
+                LOGGER(LOG_INFO, "added file '%s'", events[i].path);
                 scanner_submit_request(strdup(events[i].path));
                           }
             break;
             case MovedTo | Created:
-                syslog(LOG_INFO, "'%s' created\n", events[i].path);
+                LOGGER(LOG_INFO, "'%s' created", events[i].path);
             vector_pushback(&moveTo, strdup(events[i].path));
             break;
             case MovedFrom | Removed:
-                syslog(LOG_INFO, "'%s' removed\n", events[i].path);
+                LOGGER(LOG_INFO, "'%s' removed", events[i].path);
             vector_pushback(&moveFrom, strdup(events[i].path));
             break;
             case Updated:
-                syslog(LOG_INFO, "'%s' renamed\n", events[i].path);
+                LOGGER(LOG_INFO, "'%s' renamed", events[i].path);
             vector_pushback(&updated, strdup(events[i].path));
         }
     }
@@ -108,7 +107,7 @@ void library_change_cb(fsw_cevent const *const events,
         else newparent = 1;
         scratch_reset(s);
 
-        syslog(LOG_INFO, "moved %d [%s/%s] to parent %d [%s/%s]\n",
+        LOGGER(LOG_INFO, "moved %d [%s/%s] to parent %d [%s/%s]",
                 pathid, frompath, fromfile, newparent, topath, tofile);
         db_change_path(state, pathid, tofile, newparent);
 
@@ -132,11 +131,11 @@ static void watcher_cleanup(void *arg) {
     app *state = (app *)arg;
     fsw_destroy_session(state->fd);
     db_close_database(state);
-    syslog(LOG_INFO, "watcher thread terminated.\n");
+    LOGGER(LOG_INFO, "watcher thread terminated.");
 }
 
 void *watcher_thread(void *arg) {
-    syslog(LOG_INFO, "watcher thread starting...\n");
+    LOGGER(LOG_INFO, "watcher thread starting...");
     watcher_pid = pthread_self();
     const fsw_event_type_filter include_created   = { Created };
     const fsw_event_type_filter include_removed   = { Removed };
@@ -147,8 +146,8 @@ void *watcher_thread(void *arg) {
     app state;
     int cleanup_pop_val;
     int ret;
-    config_t *conf = (config_t *)arg;
-    state.config = conf;
+    //config_t *conf = (config_t *)arg;
+    state.config = &conf;
     wait_for_writer();
     pthread_cleanup_push(watcher_cleanup, &state);
     state.fd = fsw_init_session(system_default_monitor_type);
@@ -167,20 +166,20 @@ void *watcher_thread(void *arg) {
     pthread_mutex_unlock(&watcher_ready_mutex);
     pthread_cond_broadcast(&watcher_ready);
     char *paths[2] = {0};
-    paths[0] = conf->root;
+    paths[0] = conf.root;
     FTS *tree = fts_open(paths, FTS_NOCHDIR | FTS_NOSTAT, 0);
     FTSENT *node;
     while (node = fts_read(tree))
         if (node->fts_info & FTS_D)
             fsw_add_path(state.fd, node->fts_path);
     wait_for_scanner();
-    syslog(LOG_INFO, "watcher thread active.\n");
-    fsw_start_monitor(state.fd);
+    LOGGER(LOG_INFO, "watcher thread active.");
+    //fsw_start_monitor(state.fd);
     while (watcher_active) {
         pthread_testcancel();
         sleep(WATCH_SLEEP_INTERVAL);
     }
-    syslog(LOG_INFO, "watcher thread terminated\n");
+    LOGGER(LOG_INFO, "watcher thread terminated");
     pthread_cleanup_pop(cleanup_pop_val);
     return NULL;
 }

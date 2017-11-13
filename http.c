@@ -9,7 +9,7 @@
 #include <event2/event.h>
 #include <evhtp/evhtp.h>
 #include <sqlite3.h>
-#include <syslog.h>
+#include "system.h"
 #include "config.h"
 #include "http.h"
 #include "vector.h"
@@ -61,14 +61,14 @@ void app_init_thread(evhtp_t *htp, evthr_t *thread, void *arg) {
     precompile_statements(aux);
 // to be retrieved by request callbacks that need
     evthr_set_aux(thread, aux); 
-    syslog(LOG_INFO, "evhtp thread listening for connections.\n");
+    LOGGER(LOG_INFO, "evhtp thread listening for connections.");
 }
 
 void app_term_thread(evhtp_t *htp, evthr_t *thread, void *arg) {
     app *aux = (app *)evthr_get_aux(thread);
     db_close_database(aux);
     free(aux);
-    syslog(LOG_INFO, "evhtp thread terminated.\n");
+    LOGGER(LOG_INFO, "evhtp thread terminated.");
 }
 
 void add_headers_out(evhtp_request_t *req) {
@@ -97,7 +97,7 @@ void add_headers_out(evhtp_request_t *req) {
 void server_xmlrpc(evhtp_request_t *req, void *a) {
     log_request(req, a);
     evhtp_send_reply(req, EVHTP_RES_OK);
-    syslog(LOG_INFO, "received request %s: %s - %s\n", 
+    LOGGER(LOG_INFO, "received request %s: %s - %s", 
             (char *)a, req->uri->path->path, req->uri->path->file); 
 }
 
@@ -268,7 +268,7 @@ void res_container_list(evhtp_request_t *req, void *a) {
     int nmeta = 0;
     const char *param = evhtp_kv_find(query, "meta");
     int npl = count_precompiled_items(aux, Q_COUNT_ALL_PLAYLISTS, NULL);
-    syslog(LOG_INFO, "Found %d playlists.\n", npl);
+    LOGGER(LOG_INFO, "Found %d playlists.", npl);
     if (param == NULL) {
         meta  = (char **)default_meta_container;
     } else {
@@ -286,7 +286,7 @@ void res_container_list(evhtp_request_t *req, void *a) {
         int index = meta_find_container_tag(meta[i]);
         if (index >= 0)
             vector_pushback(&tags, container_meta_tags + index);
-        else syslog(LOG_NOTICE, "unrecognized metatag: %s\n", meta[i]);
+        else LOGGER(LOG_NOTICE, "unrecognized metatag: %s", meta[i]);
     }
     char *sqlstr;
     q.type = Q_CONTAINERLIST;
@@ -300,7 +300,7 @@ void res_container_list(evhtp_request_t *req, void *a) {
                           sqlstr, NULL, containerlist_itemcb); 
     add_list(req->buffer_out, payload, "aply", nitems, nitems);
     evhtp_send_reply(req, EVHTP_RES_OK);
-    syslog(LOG_INFO, "sent %d playlists.\n", nitems);
+    LOGGER(LOG_INFO, "sent %d playlists.", nitems);
     // cleanup
     if (raw_meta) free(raw_meta);
     if (meta && meta != (char **)default_meta_container) free(meta);
@@ -345,7 +345,7 @@ void res_container_items(evhtp_request_t *req, void *a) {
         int index = meta_find_item_tag(meta[i]);
         if (index >= 0)
             vector_pushback(&tags, item_meta_tags + index);
-        else syslog(LOG_NOTICE, "unrecognized metatag: %s\n", meta[i]);
+        else LOGGER(LOG_NOTICE, "unrecognized metatag: %s", meta[i]);
     }
     char *sqlstr;
     size_t nitems;
@@ -381,8 +381,8 @@ void res_container_items(evhtp_request_t *req, void *a) {
         ritems = sql_put_results(&payload, items, aux, &tags, 0, 
                                  sqlstr, &pl_num, NULL);
     add_list(req->buffer_out, payload, "apso", ritems, ritems);
-    syslog(LOG_INFO, "found %d items\n", ritems);
-    syslog(LOG_INFO, "sending %lu bytes...\n", 
+    LOGGER(LOG_INFO, "found %d items", ritems);
+    LOGGER(LOG_INFO, "sending %lu bytes...", 
                      evbuffer_get_length(req->buffer_out));
     evhtp_send_reply(req, EVHTP_RES_OK);
     // cleanup
@@ -423,7 +423,7 @@ void res_item_list(evhtp_request_t *req, void *a) {
         int index = meta_find_item_tag(meta[i]);
         if (index >= 0)
             vector_pushback(&tags, item_meta_tags + index);
-        else syslog(LOG_NOTICE, "unrecognized metatag: %s\n", meta[i]);
+        else LOGGER(LOG_NOTICE, "unrecognized metatag: %s", meta[i]);
     }
     char *sqlstr;
     q.type = Q_ITEMLIST;
@@ -435,8 +435,8 @@ void res_item_list(evhtp_request_t *req, void *a) {
     int ritems = sql_put_results(&payload, items, aux, &tags, 0, 
                                  sqlstr, NULL, NULL);
     add_list(req->buffer_out, payload, "adbs", ritems, ritems);
-    syslog(LOG_INFO, "found %lu items.\n", nitems);
-    syslog(LOG_INFO, "sending %lu bytes...\n", 
+    LOGGER(LOG_INFO, "found %lu items.", nitems);
+    LOGGER(LOG_INFO, "sending %lu bytes...", 
                      evbuffer_get_length(req->buffer_out));
     evhtp_send_reply(req, EVHTP_RES_OK);
     // cleanup
@@ -579,7 +579,7 @@ void res_group_list(evhtp_request_t *req, void *a) {
     char *tag = NULL;
     int type = G_NONE;
     if (!type_str) {
-        syslog(LOG_ERR, "group list request missing group-type\n");
+        LOGGER(LOG_ERR, "group list request missing group-type");
         evhtp_send_reply(req, EVHTP_RES_ERROR);
     }
     if      (!strcmp(type_str, "albums")) {
@@ -607,7 +607,7 @@ void res_group_list(evhtp_request_t *req, void *a) {
         int index = meta_find_group_tag(meta[i]);
         if (index >= 0)
             vector_pushback(&tags, group_meta_tags + index);
-        else syslog(LOG_NOTICE, "unrecognized metatag: %s\n", meta[i]);
+        else LOGGER(LOG_NOTICE, "unrecognized metatag: %s", meta[i]);
     }
     struct evbuffer *payload;
     payload = evbuffer_new();
@@ -623,8 +623,8 @@ void res_group_list(evhtp_request_t *req, void *a) {
     int ritems = sql_put_results(&payload, items, aux, &tags, 1, 
                                  sqlstr, &type, grouplist_itemcb);
     add_list(req->buffer_out, payload, tag, ritems, ritems);
-    syslog(LOG_INFO, "found %i items.\n", ritems);
-    syslog(LOG_INFO, "sending %lu bytes...\n", 
+    LOGGER(LOG_INFO, "found %i items.", ritems);
+    LOGGER(LOG_INFO, "sending %lu bytes...", 
                      evbuffer_get_length(req->buffer_out));
     evhtp_send_reply(req, EVHTP_RES_OK);
 // cleanup
@@ -638,7 +638,7 @@ void res_group_list(evhtp_request_t *req, void *a) {
 }
 
 void register_callbacks(evhtp_t *evhtp) {
-    syslog(LOG_INFO, "registering callbacks...\n");
+    LOGGER(LOG_INFO, "registering callbacks...");
 
 // regex callbacks must be registered in correct order: most specific first
 evhtp_set_regex_cb(evhtp, 

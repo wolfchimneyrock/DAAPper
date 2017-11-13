@@ -4,8 +4,8 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>
-#include <syslog.h>
 #include <unistd.h>
+#include "system.h"
 #include "cache.h"
 #include "util.h"
 
@@ -34,6 +34,11 @@ struct _cache {
 };
 
 CACHE *cache_init(int capacity, int stripes, void *(*create)(int, void *), int (*destroy)(void *)) {
+    LOGGER(LOG_INFO, "cache capacity %d with %d stripes", capacity, stripes);
+    if (capacity < 1) {
+        LOGGER(LOG_ERR, "cache capacity must be > 0");
+        exit(1);
+    }
     CACHE *c = malloc(sizeof(CACHE));
     c->map = calloc(capacity, sizeof(void *));
     c->capacity = capacity;
@@ -123,7 +128,7 @@ static void _write_unlock_all(CACHE *c) {
 static void _exponential_backoff(void **mem, const void *value) {
     int usecs = INITIAL_BACKOFF;
     while (*mem == value) {
-        syslog(LOG_INFO, "   waiting %d ... ", usecs);
+        LOGGER(LOG_INFO, "   waiting %d ... ", usecs);
         _spin_pause();
         usleep(usecs);
         usecs *= 2;

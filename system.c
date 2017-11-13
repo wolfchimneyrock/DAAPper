@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <syslog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -21,9 +20,12 @@
 
 static int pidfile_fd;
 static char pidfile_str[256];
+int flag_daemonize = 0;
 
 volatile pthread_t main_pid, signal_pid, 
     watcher_pid, scanner_pid, writer_pid; 
+
+
 
 int set_affinityrange(pthread_t pid, int firstcpu, int lastcpu) {
     cpu_set_t c;
@@ -133,21 +135,21 @@ void daemonize(config_t *conf, char **argv) {
     dup2(nullfd, STDOUT_FILENO);
     dup2(nullfd, STDERR_FILENO);
     close(nullfd);
-// from this point out, we use syslog() to output messages
+// from this point out, we use LOGGER() to output messages
     openlog(argv[0], LOG_PID | LOG_CONS, LOG_USER);
 }
 
 void cleanup() {
     close(pidfile_fd);
     remove(pidfile_str);
-    syslog(LOG_INFO, "exiting.\n");
+    LOGGER(LOG_INFO, "exiting.\n");
     closelog();
 }
 
 static void handle_signal(int sig) {
-    syslog(LOG_INFO, "received signal %d - %s\n", sig, strsignal(sig));
+    LOGGER(LOG_INFO, "received signal %d - %s\n", sig, strsignal(sig));
     if (sig == SIGKILL || sig == SIGTERM || sig == SIGSTOP || sig == SIGINT) {
-        syslog(LOG_INFO, "terminating...\n");
+        LOGGER(LOG_INFO, "terminating...\n");
         // cancelling the signal thread will cause a graceful shutdown
         pthread_cancel(signal_pid);
     }
@@ -158,7 +160,7 @@ static void handle_signal(int sig) {
 static void signal_cleanup(void *arg) {
     // we are terminating because of a signal
     // inform the other threads to terminate.
-    syslog(LOG_INFO, "cancelling threads...\n");
+    LOGGER(LOG_INFO, "cancelling threads...\n");
     pthread_cancel(watcher_pid);
     pthread_cancel(main_pid);
     pthread_cancel(scanner_pid);

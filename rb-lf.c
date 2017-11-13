@@ -1,11 +1,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <syslog.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <errno.h>
 #include <string.h>
+#include "system.h"
 #include "ringbuffer.h"
 #include "util.h"
 
@@ -24,7 +24,7 @@ struct _ringbuffer {
 
 RINGBUFFER *rb_init(size_t capacity) {
     if (capacity < 1 || capacity > (1 << BITS )) return NULL;
-    syslog(LOG_INFO, "    rb_init()");
+    LOGGER(LOG_INFO, "    rb_init()");
     RINGBUFFER *rb = malloc(sizeof(RINGBUFFER));
     rb->capacity = capacity;
     rb->data = calloc(capacity, sizeof(void *));

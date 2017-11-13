@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <syslog.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -357,7 +356,7 @@ static int execute_write_query(app *aux, query_t **q_list) {
     query_t *q = q_list[0];
     for(int i = 0; q; q = q_list[++i]) {
         if (q == NULL || aux == NULL) {
-            syslog(LOG_ERR, "execute_write_query() got NULL\n");
+            LOGGER(LOG_ERR, "execute_write_query() got NULL");
             return -1;
         }
 // a precompiled query, just bind params
@@ -369,23 +368,23 @@ static int execute_write_query(app *aux, query_t **q_list) {
             for (int i = 0; i < q->n_int; i++) {
                 ret = sqlite3_bind_int(stmt, ++col, q->intvals[i]);
                 if (ret != SQLITE_OK)
-                    syslog(LOG_ERR, "failed to bind int column,\n");
+                    LOGGER(LOG_ERR, "failed to bind int column,");
             }
             int64_t *int64val = q->int64vals;
             for (int i = 0; i < q->n_int64; i++) {
                 ret = sqlite3_bind_int64(stmt, ++col, q->int64vals[i]);
                 if (ret != SQLITE_OK)
-                    syslog(LOG_ERR, "failed to bind int64 column.\n");
+                    LOGGER(LOG_ERR, "failed to bind int64 column.");
             }
             char **strval = q->strvals;
             for (int i = 0; i < q->n_str; i++) {
                 ret = sqlite3_bind_text(stmt, ++col, q->strvals[i], -1, NULL);
                 if (ret != SQLITE_OK)
-                    syslog(LOG_ERR, "failed to bind str column.\n");
+                    LOGGER(LOG_ERR, "failed to bind str column.");
             }
             while ((ret = sqlite3_step(stmt)) == SQLITE_BUSY);
             if (ret != SQLITE_DONE && ret != SQLITE_ROW) {
-                syslog(LOG_ERR, "failed to execute query '%s' error %d.\n", 
+                LOGGER(LOG_ERR, "failed to execute query '%s' error %d.", 
                         queries[q->type].name, ret);
             }
             if (q->returns == R_INT) {
@@ -409,20 +408,20 @@ static int execute_write_query(app *aux, query_t **q_list) {
         } else { 
 // we have to prepare the statement
 // so far, all of the write statements can be precompiled
-            syslog(LOG_ERR, "query type not yet supported.\n");
+            LOGGER(LOG_ERR, "query type not yet supported.");
         }
     }
     gettimeofday((struct timeval *)&write_finished, NULL);
     writing = TIMESTAMP(write_finished) - TIMESTAMP(write_started);
 
-    //syslog(LOG_INFO, "[%.3f%% sqlite duty cycle]", (double)writing*100 / (writing + idle));
+    //LOGGER(LOG_INFO, "[%.3f%% sqlite duty cycle]", (double)writing*100 / (writing + idle));
     
     /*
     uint64_t fulfilled;
     fulfilled = TIMESTAMP(now);
 
     if ((aux->config)->verbose)
-        syslog(LOG_INFO, "[%lu, %lu, %lu, %d]", created, processed - created, fulfilled - processed, place);
+        LOGGER(LOG_INFO, "[%lu, %lu, %lu, %d]", created, processed - created, fulfilled - processed, place);
     */
     free(q_list); // with SCRATCH, only one free() needed
 }
@@ -449,37 +448,48 @@ static void writer_cleanup(void *arg) {
     int ret;
     rb_free(writer_buffer);
     db_close_database(state);
-    syslog(LOG_INFO, "writer thread terminated.\n");
+    LOGGER(LOG_INFO, "writer thread terminated.");
 }
 
 void *writer_thread(void *arg) {
     writer_pid = pthread_self();
-    config_t *conf = (config_t *)arg;
+    //config_t *conf = (config_t *)arg;
     app state;
-    state.config = conf;
+    state.config = &conf;
     int cleanup_pop_val;
     pthread_cleanup_push(writer_cleanup, &state);
 // initialize ringbuffer
-    writer_buffer = rb_init(conf->buffercap);
+    writer_buffer = rb_init(conf.buffercap);
     if (!writer_buffer) {
-        syslog(LOG_ERR, "failed to init writer_buffer[%d]!", conf->buffercap);
+        LOGGER(LOG_ERR, "failed to init writer_buffer[%l]!", conf.buffercap);
         exit(1);
     }
 // initialize semaphore for database write results
     sem_init(&db_return_int_sem, 0, 0);
     int ret;
-    syslog(LOG_INFO, "dbfile: %s\n", conf->dbfile);
+    LOGGER(LOG_INFO, "dbfile: %s", conf.dbfile);
+    //db_open_database(&state, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
     db_open_database(&state, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX);
 // this only needs to be called once per database creation
 // but at this point, we don't know if we created or 
 // merely opened just now
     ret = sqlite3_exec(state.db, "PRAGMA journal_mode = WAL;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "failed to set sqlite3 journal_mode = WAL");
+    }
     ret = sqlite3_exec(state.db, "PRAGMA synchronous = OFF;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "failed to set sqlite3 syncronous = OFF");
+    }
+    ret = sqlite3_exec(state.db, "PRAGMA temp_store = MEMORY;", 0, 0, 0);
+    if (ret != SQLITE_OK) {
+        LOGGER(LOG_ERR, "failed to set sqlite3 temp_store = MEMORY");
+    }
 // create tables, indexes, triggers
     for (t_type t = 0; t < T_MAX; t++) {
         ret = sqlite3_exec(state.db, tables[t].query, 0, 0, 0);
         if (ret != SQLITE_OK) {
-            syslog(LOG_ERR, "failed to create table '%s'\n", tables[t].name);
+            LOGGER(LOG_ERR, "failed to create table '%s'", tables[t].name);
         }
     }
     precompile_statements(&state);
@@ -491,13 +501,14 @@ void *writer_thread(void *arg) {
 // writer main loop
 // TBD: batch drain the ringbuffer vs individual pops 
     int count;
-    int bufsize = conf->buffercap;
+    int bufsize = conf.buffercap;
     query_t ***buf = calloc(bufsize, sizeof(query_t **));
+    LOGGER(LOG_INFO, "writer thread active.");
     while (writer_active) {
-        if (!conf->sequential) {
+        if (!conf.sequential) {
         //query_t **q = rb_popfront(writer_buffer);
             count = rb_drain(writer_buffer, (void **)buf, bufsize);
-            syslog(LOG_INFO, "writer got %d elements", count);
+            LOGGER(LOG_INFO, "writer got %d elements", count);
             for (int i = 0; i < count; i++) {
                 if (buf[i])
                     execute_write_query(&state, buf[i]);

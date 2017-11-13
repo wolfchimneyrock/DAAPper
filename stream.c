@@ -9,7 +9,7 @@
 #include <event2/event.h>
 #include <evhtp/evhtp.h>
 #include <sqlite3.h>
-#include <syslog.h>
+#include "system.h"
 #include "config.h"
 #include "http.h"
 #include "vector.h"
@@ -23,26 +23,26 @@
 #include "cache.h"
 #include "stream.h"
 
-#define CHUNK_DELAY  1
-#define CHUNK_SIZE   16*1024
+#define CHUNK_DELAY  250
+#define CHUNK_SIZE   1024*1024
 //#define CHUNK_SIZE   0
-#define PRELOAD_SIZE 64*1024
+#define PRELOAD_SIZE 1024*1024
 CACHE *file_cache = NULL;
 
 void *create_segment(int id, void *a) {
-	syslog(LOG_INFO, "    create_segment()");
+	LOGGER(LOG_INFO, "    create_segment()");
     app *aux = (app *)a;
     int ret;
     sqlite3_stmt *stmt = aux->stmts[Q_GET_PATH];
     ret = sqlite3_bind_int(stmt, 1, id);
     if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "error binding value: '%d'\n", id);
+        LOGGER(LOG_ERR, "error binding value: '%d'", id);
         sqlite3_reset(stmt);
         return NULL;
     }
     ret = sqlite3_step(stmt);
     if (ret != SQLITE_ROW) {
-        syslog(LOG_ERR, "error retrieving file path for item %d\n", id);
+        LOGGER(LOG_ERR, "error retrieving file path for item %d", id);
         sqlite3_reset(stmt);
         return NULL;
     }
@@ -79,7 +79,7 @@ typedef struct stream_t {
 static void schedule_next_chunk(stream_t *st, int ms) {
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = ms * 1000;
+    tv.tv_usec = ms;
     evtimer_add(st->timer, &tv);
 }
 
@@ -89,7 +89,7 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
     if (st->conn->request == st->req) {
         if (st->offset >= st->size) {
             // no more chunks - clean up
-		    //syslog(LOG_INFO, "    file %d finished sending chunks", st->id);
+		    //LOGGER(LOG_INFO, "    file %d finished sending chunks", st->id);
             evhtp_send_reply_chunk_end(st->req);
             event_free(st->timer);
             if (st->buf) {
@@ -98,7 +98,7 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
             }
             free(st);
         } else {
-		//syslog(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
+		//LOGGER(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
             size_t size = st->size - st->offset;
             st->current++;
             if (size > CHUNK_SIZE)
@@ -110,7 +110,7 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
         }
     } else {
         // another request supercedes this one, stop sending chunks and clean up
-        syslog(LOG_INFO, "    file %d interrupted at chunk %lu\n", st->id, st->current);
+        LOGGER(LOG_INFO, "    file %d interrupted at chunk %lu", st->id, st->current);
         if (st->buf) {
             while (evbuffer_get_length(st->buf))
                 evbuffer_drain(st->buf, -1);
@@ -148,7 +148,7 @@ void res_stream_item(evhtp_request_t *req, void *a) {
      
     int id = atoi(req->uri->path->file);
     if (id == 0) {
-        syslog(LOG_ERR, "invalid song id '%s' requested\n", 
+        LOGGER(LOG_ERR, "invalid song id '%s' requested", 
                         req->uri->path->file);
         evhtp_send_reply(req, EVHTP_RES_ERROR);
         return;
@@ -169,7 +169,7 @@ void res_stream_item(evhtp_request_t *req, void *a) {
         evbuffer_set_flags(st->buf, EVBUFFER_FLAG_DRAINS_TO_FD);
         int entire = 0;
         if (CHUNK_SIZE <= 0) {
-		syslog(LOG_INFO, "    thread %d sending entire file", st->id);
+		LOGGER(LOG_INFO, "    thread %d sending entire file", st->id);
             entire = 1;
             evbuffer_add_file_segment(req->buffer_out, st->data, st->offset, st->size);
             st->offset += st->size;
@@ -194,7 +194,7 @@ void res_stream_item(evhtp_request_t *req, void *a) {
         }
         db_inc_playcount(id);
     } else {
-        syslog(LOG_INFO, "got a NULL song from cache");
+        LOGGER(LOG_INFO, "got a NULL song from cache");
         evhtp_send_reply(req, EVHTP_RES_NOTFOUND);
     }
     // cleanup now done in callback
