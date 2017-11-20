@@ -11,6 +11,7 @@
 #include "meta.h"
 #include "util.h"
 
+
 const sql_t queries[] = {
     { "Q_GET_PATH",
         "SELECT group_concat(path, '/')  "\
@@ -200,6 +201,12 @@ const sql_t queries[] = {
     { "Q_FIND_SONG",
       ""
     },
+    { "Q_BEGIN_TRANSACTION",
+      "BEGIN TRANSACTION;"
+    },
+    { "Q_END_TRANSACTION",
+      "END TRANSACTION;"
+    },
     { "Q_PRECOMPILED_MAX",
         NULL
     },
@@ -381,7 +388,11 @@ const sql_t tables[] = {
         "CREATE INDEX IF NOT EXISTS idx_song_album  ON songs(album); \n"\
         "CREATE INDEX IF NOT EXISTS idx_song_genre  ON songs(genre); \n"\
         "CREATE INDEX IF NOT EXISTS idx_song_path   ON songs(path);  \n"\
-        "CREATE INDEX IF NOT EXISTS idx_song_title  ON songs(title); \n"
+        "CREATE INDEX IF NOT EXISTS idx_song_title  ON songs(title); \n"\
+        "CREATE TRIGGER IF NOT EXISTS son_upd AFTER UPDATE ON songs \n"\
+        "      BEGIN INSERT INTO t_temp SELECT NEW.id; END; \n"\
+        "CREATE TRIGGER IF NOT EXISTS son_ins AFTER INSERT ON songs \n"\
+        "      BEGIN INSERT INTO t_temp SELECT NEW.id; END;"
     },
     { "playlists",  
         "CREATE TABLE IF NOT EXISTS playlists (\n"\

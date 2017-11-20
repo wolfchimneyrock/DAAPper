@@ -33,23 +33,35 @@ CACHE *file_cache = NULL;
 void *create_segment(int id, void *a) {
 	LOGGER(LOG_INFO, "    create_segment()");
     app *aux = (app *)a;
-    int ret;
+    char *path;
+    sqlite3_stmt *stmt = NULL;
     CACHENODE *cn = NULL;
-    sqlite3_stmt *stmt = aux->stmts[Q_GET_PATH];
-    ret = sqlite3_bind_int(stmt, 1, id);
-    if (ret != SQLITE_OK) {
-        syslog(LOG_ERR, "error binding value: '%d'\n", id);
-        goto error;
+    if (aux->header == -1) { // we were passed an app object, not a string
+        LOGGER(LOG_INFO, "got an app");
+	    int ret;
+	    stmt = aux->stmts[Q_GET_PATH];
+            sqlite3_reset(stmt);
+	    ret = sqlite3_bind_int(stmt, 1, id);
+	    if (ret != SQLITE_OK) {
+		syslog(LOG_ERR, "error binding value: '%d'\n", id);
+		goto error;
+	    }
+	    ret = sqlite3_step(stmt);
+	    if (ret != SQLITE_ROW) {
+		syslog(LOG_ERR, "error retrieving file path for item %d\n", id);
+		goto error;
+	    }
+	    path = sqlite3_column_text(stmt, 0);
+    } else {  // we were passed a path string
+        LOGGER(LOG_INFO, "got a string");
+        path = (char *)a;
     }
-    ret = sqlite3_step(stmt);
-    if (ret != SQLITE_ROW) {
-        syslog(LOG_ERR, "error retrieving file path for item %d\n", id);
-        goto error;
-    }
-    const char *path = sqlite3_column_text(stmt, 0);
     int fd = open(path, O_RDONLY); 
     struct stat st;
-    if(fstat(fd, &st)) goto error;
+    if(fstat(fd, &st)) {
+        LOGGER(LOG_ERR, "error stat() file %d", fd);
+        goto error;
+    }
     if (st.st_size > 0) {
         cn = malloc(sizeof(CACHENODE));
         cn->size = st.st_size;
@@ -57,9 +69,12 @@ void *create_segment(int id, void *a) {
                 fd, 0, st.st_size, 
                 EVBUF_FS_CLOSE_ON_FREE
                 );
+    } else {
+        LOGGER(LOG_ERR, "got file of size zero");
     }
 error:
-    sqlite3_reset(stmt);
+    if (stmt)
+        sqlite3_reset(stmt);
     return cn;
 }
 

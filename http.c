@@ -47,7 +47,7 @@ void app_init_thread(evhtp_t *htp, evthr_t *thread, void *arg) {
 // per thread init here: open db, etc
     app_parent *parent = (app_parent *)arg;
     app *aux = malloc(sizeof(app));
-        
+    aux->header = -1;        
     pthread_mutex_lock(&threads_mutex);
     aux->thread_id = ++threads;
     pthread_mutex_unlock(&threads_mutex);

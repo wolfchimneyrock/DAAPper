@@ -17,6 +17,11 @@
 #include "util.h"
 
 volatile sig_atomic_t writer_active = 0;
+
+int statement_id = 0;
+
+#define TRANSACTION_SIZE 64
+
 static int db_return_int;
 static char *db_return_str;
 static RINGBUFFER *writer_buffer;
@@ -305,30 +310,42 @@ int db_upsert_song(app *aux, const char *title, const int path,
         const int artist, const int album, const int genre, 
         const int track, const int disc, const int song_length) {
     size_t len = strlen(title) + 1;
-    SCRATCH *s = scratch_new( 2*sizeof(query_t *) +
-                              1*sizeof(query_t) +
+    SCRATCH *s = scratch_new( 4*sizeof(query_t *) +
+                              3*sizeof(query_t) +
                               7*sizeof(int) +
                               1*sizeof(char *) +
                               len);
-    query_t **q = scratch_get(s, 2*sizeof(query_t *));
+    query_t **q = scratch_get(s, 4*sizeof(query_t *));
+
     q[0] = scratch_get(s, sizeof(query_t));
-    q[0]->type = Q_UPSERT_SONG;
-    q[0]->n_str = 1;
-    q[0]->n_int = 7;
-    q[0]->strvals = scratch_get(s, sizeof(char *));
-    q[0]->intvals = scratch_get(s, 7*sizeof(int));
-    q[0]->strvals[0] = scratch_get(s, len);
-    strncpy(q[0]->strvals[0], title, len);
-    q[0]->intvals[0] = (int)path;
-    q[0]->intvals[1] = (int)artist;
-    q[0]->intvals[2] = (int)album;
-    q[0]->intvals[3] = (int)genre;
-    q[0]->intvals[4] = (int)track;
-    q[0]->intvals[5] = (int)disc;
-    q[0]->intvals[6] = (int)song_length;
+    q[0]->type = Q_CLEAR_RETURN;
+
+    q[1] = scratch_get(s, sizeof(query_t));
+    q[1]->type = Q_UPSERT_SONG;
+    q[1]->n_str = 1;
+    q[1]->n_int = 7;
+    q[1]->strvals = scratch_get(s, sizeof(char *));
+    q[1]->intvals = scratch_get(s, 7*sizeof(int));
+    q[1]->strvals[0] = scratch_get(s, len);
+    strncpy(q[1]->strvals[0], title, len);
+    q[1]->intvals[0] = (int)path;
+    q[1]->intvals[1] = (int)artist;
+    q[1]->intvals[2] = (int)album;
+    q[1]->intvals[3] = (int)genre;
+    q[1]->intvals[4] = (int)track;
+    q[1]->intvals[5] = (int)disc;
+    q[1]->intvals[6] = (int)song_length;
+   
+    q[2] = scratch_get(s, sizeof(query_t));
+    q[2]->type = Q_GET_RETURN;
+    q[2]->returns = R_INT;
+    
     scratch_free(s, SCRATCH_KEEP);
     submit_write_query(q);
-    return 0;
+    sem_wait(&db_return_int_sem);
+    int val = db_return_int;
+    return val;
+    //return 0;
 }
 
 /**
@@ -340,7 +357,7 @@ static int execute_write_query(app *aux, query_t **q_list) {
     int ret;
     int val;
     if (q_list == NULL) return -1;
-
+    statement_id++;
     /*
     struct timeval now;
     uint64_t created = (*q_list)->created;
@@ -411,6 +428,16 @@ static int execute_write_query(app *aux, query_t **q_list) {
             LOGGER(LOG_ERR, "query type not yet supported.");
         }
     }
+    if (statement_id > TRANSACTION_SIZE) {
+        statement_id = 0;
+        sqlite3_stmt *tx_end = aux->stmts[Q_END_TRANSACTION];
+       
+        ret = sqlite3_step(tx_end);
+        sqlite3_reset(tx_end);
+        sqlite3_stmt *tx_begin = aux->stmts[Q_BEGIN_TRANSACTION];
+        ret = sqlite3_step(tx_begin);
+        sqlite3_reset(tx_begin);
+    }
     gettimeofday((struct timeval *)&write_finished, NULL);
     writing = TIMESTAMP(write_finished) - TIMESTAMP(write_started);
 
@@ -473,7 +500,8 @@ void *writer_thread(void *arg) {
 // this only needs to be called once per database creation
 // but at this point, we don't know if we created or 
 // merely opened just now
-    ret = sqlite3_exec(state.db, "PRAGMA journal_mode = WAL;", 0, 0, 0);
+    ret = sqlite3_exec(state.db, "PRAGMA journal_mode = MEMORY;", 0, 0, 0);
+    //ret = sqlite3_exec(state.db, "PRAGMA journal_mode = WAL;", 0, 0, 0);
     if (ret != SQLITE_OK) {
         LOGGER(LOG_ERR, "failed to set sqlite3 journal_mode = WAL");
     }
@@ -504,6 +532,9 @@ void *writer_thread(void *arg) {
     int bufsize = conf.buffercap;
     query_t ***buf = calloc(bufsize, sizeof(query_t **));
     LOGGER(LOG_INFO, "writer thread active.");
+    sqlite3_stmt *tx_begin = state.stmts[Q_BEGIN_TRANSACTION];
+    sqlite3_step(tx_begin);
+    sqlite3_reset(tx_begin);
     while (writer_active) {
         if (!conf.sequential) {
         //query_t **q = rb_popfront(writer_buffer);

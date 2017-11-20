@@ -37,7 +37,7 @@ static void main_cleanup(void *arg) {
     LOGGER(LOG_INFO, "main thread terminated.");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:X";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -50,6 +50,7 @@ static struct option long_options[] = {
     { "buffer-capacity",    required_argument, 0,       'B' },
     { "sequential",         no_argument,       0,       'S' },
     { "cache-stripes",      required_argument, 0,       'C' },
+    { "full-scan",          no_argument,       0,       'X' },
     { 0, 0, 0, 0 }
 };
 
@@ -116,6 +117,8 @@ int main (int argc, char *argv[]) {
                       break;
             case 'C': INTARG(conf.cachestripes, "cache-stripes");
                       break;
+            case 'X': conf.fullscan = 1;
+                      break;
             default:
                       exit(1);
         }
@@ -128,7 +131,8 @@ int main (int argc, char *argv[]) {
     app_parent parent;
     
     get_config(&conf, config_file);
-
+    file_cache = cache_init(6000, conf.cachestripes, create_segment, NULL);
+    LOGGER(LOG_INFO, "cache at %p", file_cache);
 // unix specific initialization in system.c
 // TBD windows version
     if (flag_daemonize)
@@ -157,7 +161,6 @@ int main (int argc, char *argv[]) {
     getrlimit(RLIMIT_NOFILE, &fd_limit);
     fd_limit.rlim_cur = fd_limit.rlim_max;
     setrlimit(RLIMIT_NOFILE, &fd_limit);
-    file_cache = cache_init(6000, conf.cachestripes, create_segment, NULL);
 
 
 // WRITER thread:

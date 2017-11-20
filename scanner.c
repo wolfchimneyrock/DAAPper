@@ -21,13 +21,13 @@
 #include "writer.h"
 #include "system.h"
 #include "cache.h"
+#include "stream.h"
 
 #define CACHE_INITIAL_CAP    4096
 #define META_SCRATCH_SIZE    4096
 #define PATH_SCRATCH_SIZE    4096 
 #define BUFFER_CAPACITY      256 
 
-static CACHE *file_cache;
 
 volatile sig_atomic_t   scanner_active      = 0;
 static pthread_mutex_t  scanner_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -194,10 +194,15 @@ static int add_file(app *aux, const char *fname, const char *path, ID3CB *id3, S
         if (meta->genre && (meta->genre)[0] != '\0')    
             genreid  = db_upsert_genre (aux, meta->genre);
         else genreid = 0;
-
-        db_upsert_song(aux, meta->title, pathid, artistid, albumid, 
+        int songid;
+        void *cache;
+        songid = db_upsert_song(aux, meta->title, pathid, artistid, albumid, 
                 genreid, meta->track, meta->disc, meta->song_length );
-        
+        if (cache = cache_set_and_get(file_cache, songid, path)) {
+            LOGGER(LOG_INFO, "made cache segment [%d] %p %s", songid, cache, path);
+        } else {
+            LOGGER(LOG_ERR, "failed to make cache segment [%d] %p %s", songid, file_cache, path);
+        }
         return 1;
 
     }
@@ -271,7 +276,7 @@ static int execute_scan(app *aux, char *path) {
             else name = node->fts_name;
             int parent = PTR_TO_INT(vector_peekback(&parents));
             int this = db_upsert_path(aux, strdup(name), parent);
-	    LOGGER(LOG_INFO, "        [%4d] %s", this, name);
+	    //LOGGER(LOG_INFO, "        [%4d] %s", this, name);
             dir_count++;
             vector_pushback(&parents, INT_TO_PTR(this));
         }
@@ -284,7 +289,7 @@ static int execute_scan(app *aux, char *path) {
     //scratch_free(path_scratch, SCRATCH_FREE);
     id3_dispose_parser(id3);
     vector_free(&parents);
-    LOGGER(LOG_INFO, "scanned %lu files in %lu directories.", file_count, dir_count);
+    LOGGER(LOG_INFO, "*** SCANNED %lu files in %lu directories ***", file_count, dir_count);
 }
 
 static void scanner_cleanup(void *arg) {
@@ -301,6 +306,7 @@ void  *scanner_thread(void *arg) {
     scanner_pid = pthread_self();
     //config_t *conf = (config_t *)arg;
     app state;
+    state.header = -1;
     state.config = &conf;
 
     int cleanup_pop_val;
