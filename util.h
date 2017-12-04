@@ -16,6 +16,7 @@ typedef struct app_parent {
 } app_parent;
 
 typedef struct app {
+    int           header;
     FSW_HANDLE    fd;    
     int           header;
     int           thread_id;
