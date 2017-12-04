@@ -311,8 +311,8 @@ void  *scanner_thread(void *arg) {
 
     int cleanup_pop_val;
     pthread_cleanup_push(scanner_cleanup, &state);
-    LOGGER(LOG_INFO, "scanner buffer = %d", conf.buffercap);
-    scanner_buffer = rb_init(conf.buffercap);
+    LOGGER(LOG_INFO, "scanner buffer = %lu", conf.buffercap);
+    scanner_buffer = rb_init(conf.buffercap, conf.lock_style);
     if (!scanner_buffer) {
 	LOGGER(LOG_ERR, "failed to initialize scanner buffer");
 	exit(1);

@@ -48,7 +48,7 @@ int set_affinityrange(pthread_t pid, int firstcpu, int lastcpu) {
 
 void staylocal(config_t *conf, char **argv) {
     // don't daemonize - but write pid file and enable logging to stdout
-    snprintf(pidfile_str, 256, "/tmp/%u-daapper.pid", conf->port);
+    snprintf(pidfile_str, 256, "/tmp/%lu-daapper.pid", conf->port);
     
     pidfile_fd = open(pidfile_str, O_WRONLY | O_CREAT  | O_EXCL ,
             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH );
@@ -67,7 +67,7 @@ void staylocal(config_t *conf, char **argv) {
 void daemonize(config_t *conf, char **argv) {
     pid_t pid, sid;
     int ret;
-    snprintf(pidfile_str, 256, "/tmp/%u-daapper.pid", conf->port);
+    snprintf(pidfile_str, 256, "/tmp/%lu-daapper.pid", conf->port);
     pidfile_fd = open(pidfile_str, O_RDONLY);
     if (pidfile_fd > 0) { 
 // a pidfile exists already

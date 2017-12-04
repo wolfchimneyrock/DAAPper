@@ -14,18 +14,18 @@
 #define MASK_TAIL     (MASK_USED << BITS)
 #define MASK_HEAD     (MASK_TAIL << BITS)
 
-struct _ringbuffer {
+typedef struct _ringbuffer {
     void **data;
     uintptr_t head, tail_used;
     size_t capacity;
     int deleted;
     sem_t empty_sem, filled_sem;
-};
+} RB_LF;
 
-RINGBUFFER *rb_init(size_t capacity) {
+RB_LF *rb_lf_init(size_t capacity) {
     if (capacity < 1 || capacity > (1 << BITS )) return NULL;
     LOGGER(LOG_INFO, "    rb_init()");
-    RINGBUFFER *rb = malloc(sizeof(RINGBUFFER));
+    RB_LF *rb = malloc(sizeof(RB_LF));
     rb->capacity = capacity;
     rb->data = calloc(capacity, sizeof(void *));
     rb->tail_used = 0;
@@ -36,22 +36,22 @@ RINGBUFFER *rb_init(size_t capacity) {
     return rb;
 }
 
-int rb_isfull(RINGBUFFER *rb) {
+int rb_lf_isfull(RB_LF *rb) {
     if (rb == NULL || rb->deleted) return -1;
     return (rb->tail_used & MASK_USED) >= rb->capacity;
 }
 
-int rb_isempty(RINGBUFFER *rb) {
+int rb_lf_isempty(RB_LF *rb) {
     if (rb == NULL || rb->deleted) return -1;
     return (rb->tail_used & MASK_USED) == 0;
 }
 
-int rb_size(RINGBUFFER *rb) {
+int rb_lf_size(RB_LF *rb) {
     if (rb == NULL || rb->deleted) return -1;
     return (rb->tail_used & MASK_USED);
 }
 
-int rb_pushback(RINGBUFFER *rb, void *data) {
+int rb_lf_pushback(RB_LF *rb, void *data) {
     if (rb == NULL || rb->deleted) return -1;
     uintptr_t current, updated, tail, used;
     int success = 0;
@@ -75,7 +75,7 @@ int rb_pushback(RINGBUFFER *rb, void *data) {
     return -1;
 }
                 
-void *rb_popfront(RINGBUFFER *rb) {
+void *rb_lf_popfront(RB_LF *rb) {
     if (rb == NULL || rb->deleted) return NULL;
     void *result;
     uintptr_t current, updated, head, used, newhead;
@@ -105,7 +105,7 @@ void *rb_popfront(RINGBUFFER *rb) {
     return NULL;
 }
    
-int rb_drain(RINGBUFFER *rb, void **dest, size_t max) {
+int rb_lf_drain(RB_LF *rb, void **dest, size_t max) {
     uintptr_t count, current, updated, head, used, newhead, available;
     int ret;
     while (rb && !rb->deleted) {
@@ -153,7 +153,7 @@ int rb_drain(RINGBUFFER *rb, void **dest, size_t max) {
     return -1;
 }
 
-void rb_free(RINGBUFFER *rb) {
+void rb_lf_free(RB_LF *rb) {
     if (rb == NULL) return;
     rb->deleted = 1;
     free(rb->data);

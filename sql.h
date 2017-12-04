@@ -70,6 +70,8 @@ typedef enum q_type {
     Q_FIND_GENRE,
     Q_FIND_ALBUM,
     Q_FIND_SONG,
+    Q_BEGIN_TRANSACTION,
+    Q_END_TRANSACTION,
     Q_PRECOMPILED_MAX,
 
     Q_ITEMLIST,

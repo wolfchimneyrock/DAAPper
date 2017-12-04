@@ -57,6 +57,8 @@ void get_config(config_t *config, char *cfg_file) {
         // LIBRARYNAME
     DEFAULT_STR(config->library_name, "Library");
 
+    DEFAULT_STR(config->lock_style, "lock");
+
     char *cfg_path = cfg_file ? cfg_file : "/etc/daapper.conf";
     if (access(cfg_path, F_OK) != -1) {	
         fprintf(stderr, "Using config file '%s'\n", cfg_path);

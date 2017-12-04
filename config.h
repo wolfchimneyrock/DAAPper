@@ -17,6 +17,7 @@ typedef struct config_t {
     char *server_name;
     char *library_name;
     char *userid;
+    char *lock_style;
 } config_t;
 
 extern config_t conf;

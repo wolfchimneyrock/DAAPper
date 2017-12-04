@@ -37,7 +37,7 @@ static void main_cleanup(void *arg) {
     LOGGER(LOG_INFO, "main thread terminated.");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:X";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:Xy:";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -51,6 +51,7 @@ static struct option long_options[] = {
     { "sequential",         no_argument,       0,       'S' },
     { "cache-stripes",      required_argument, 0,       'C' },
     { "full-scan",          no_argument,       0,       'X' },
+    { "lock-style",         required_argument, 0,       'y' },
     { 0, 0, 0, 0 }
 };
 
@@ -65,6 +66,7 @@ static struct option long_options[] = {
 
 int main (int argc, char *argv[]) {
     char config_file[256] = "daapper.conf";
+    char lock_style[256]  = "lf";
     char hostname[255];
     gethostname(hostname, 255);
 
@@ -82,6 +84,7 @@ int main (int argc, char *argv[]) {
     conf.cachestripes = -1;
     conf.server_name  = hostname;
     conf.library_name = NULL;
+    conf.lock_style   = NULL;
 
 // process cmdline args
     while(1) {
@@ -119,6 +122,10 @@ int main (int argc, char *argv[]) {
                       break;
             case 'X': conf.fullscan = 1;
                       break;
+            case 'y': {
+                          conf.lock_style = strdup(optarg);
+                      }
+                      break;
             default:
                       exit(1);
         }
@@ -145,6 +152,9 @@ int main (int argc, char *argv[]) {
     int cleanup_pop_val;
     pthread_cleanup_push(main_cleanup, &parent);
 
+    if (conf.fullscan) {
+        unlink(conf.dbfile);
+    }
     res = sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
     //res = sqlite3_config(SQLITE_CONFIG_SERIALIZED);
     if (res != SQLITE_OK) {

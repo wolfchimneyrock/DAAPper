@@ -3,122 +3,92 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <errno.h>
+#include <string.h>
 #include "ringbuffer.h"
+#include "rb-lock.h"
+#include "rb-lf.h"
 
-struct _ringbuffer { 
-    void **data;
-    size_t head, tail, used, cap;
-    sem_t empty_sem, filled_sem;
-    pthread_mutex_t buffer_mutex;
-    pthread_cond_t  buffer_ready;
+struct _meta_ringbuffer { 
+    void   *rb;
+    void  (*free)(void *);
+    int   (*isfull)(void *);
+    int   (*isempty)(void *);
+    int   (*size)(void *);
+    int   (*pushback)(void *, void *);
+    void *(*popfront)(void *);
+    int   (*drain)(void *, void **, size_t);
 };
 
-RINGBUFFER *rb_init(size_t capacity) {
-    if (capacity < 1) return NULL;
+
+
+RINGBUFFER *rb_init(size_t capacity, const char *type) {
     RINGBUFFER *rb = malloc(sizeof(RINGBUFFER));
-    rb->data = malloc(capacity * sizeof(void *));
-    rb->cap  = capacity;
-    rb->head = 0;
-    rb->tail = 0;
-    rb->used = 0;
-    pthread_mutex_init(&rb->buffer_mutex, NULL);
-    pthread_cond_init (&rb->buffer_ready, NULL);
-    sem_init(&rb->empty_sem,  0, capacity);
-    sem_init(&rb->filled_sem, 0, 0);
-    pthread_cond_broadcast(&rb->buffer_ready);
+    if (strcmp(type, "lock") == 0) {
+        // use locking
+        rb->rb       = rb_lock_init(capacity);
+        rb->free     = &rb_lock_free;
+        rb->isfull   = &rb_lock_isfull;
+        rb->isempty  = &rb_lock_isempty;
+        rb->size     = &rb_lock_size;
+        rb->pushback = &rb_lock_pushback;
+        rb->popfront = &rb_lock_popfront;
+        rb->drain    = &rb_lock_drain;
+    } else
+    if (strcmp(type, "lf") == 0) {
+        // use lock-free
+        rb->rb       = rb_lf_init(capacity);
+        rb->free     = &rb_lf_free;
+        rb->isfull   = &rb_lf_isfull;
+        rb->isempty  = &rb_lf_isempty;
+        rb->size     = &rb_lf_size;
+        rb->pushback = &rb_lf_pushback;
+        rb->popfront = &rb_lf_popfront;
+        rb->drain    = &rb_lf_drain;
+    
+    } else
+    if (strcmp(type, "mc") == 0) {
+        // use multi-queue
+    
+    } else {
+        // use default
+
+    }    
+
     return rb;
 }
 
 void rb_free(RINGBUFFER *rb) {
-    if (rb == NULL) return;
-    free(rb->data);
-    sem_destroy(&rb->empty_sem);
-    sem_destroy(&rb->filled_sem);
-    pthread_mutex_destroy(&rb->buffer_mutex);
-    pthread_cond_destroy (&rb->buffer_ready);
+    if (rb == NULL || rb->rb == NULL) return;
+    (rb->free)(rb->rb);
     free(rb);
 }
 
 int rb_isfull(RINGBUFFER *rb) {
-    if (rb == NULL) return -1;
-    return rb->used == rb->cap;
+    if (rb == NULL || rb->rb == NULL) return -1;
+    return (rb->isfull)(rb->rb);
 }
 
 int rb_isempty(RINGBUFFER *rb) {
-    if (rb == NULL) return -1;
-    return rb->used == 0;
+    if (rb == NULL || rb->rb == NULL) return -1;
+    return (rb->isempty)(rb->rb);
 }
 
 int rb_size(RINGBUFFER *rb) {
-    if (rb == NULL) return -1;
-    return rb->used;
+    if (rb == NULL || rb->rb == NULL) return -1;
+    return (rb->size)(rb->rb);
 }
 
 int rb_pushback(RINGBUFFER *rb, void *data) {
-    int ret;
-    if (rb == NULL) return -1;
-    while(1) {
-        pthread_testcancel();
-        ret = sem_wait(&rb->empty_sem);
-            if (ret == -1 && errno == EINTR) continue;
-            pthread_mutex_lock(&rb->buffer_mutex);
-                if (!rb_isfull(rb)) {
-                    *(rb->data + rb->tail) = (void *)data;
-                    rb->tail = (rb->tail + 1) % rb->cap;
-                    rb->used++;
-                    ret = 0;
-                } else ret = -1;
-            pthread_mutex_unlock(&rb->buffer_mutex);
-        sem_post(&rb->filled_sem);
-        return ret;
-    }
+    if (rb == NULL || rb->rb == NULL) return -1;
+    return (rb->pushback)(rb->rb, data);
 }
 
 void *rb_popfront(RINGBUFFER *rb) {
-    int ret;
-    if (rb == NULL) return NULL;
-    void *result = NULL;
-    while (1) {
-        pthread_testcancel();
-        ret = sem_wait(&rb->filled_sem);
-            if (ret == -1 && errno == EINTR) continue;
-            pthread_mutex_lock(&rb->buffer_mutex);
-                if (!rb_isempty(rb)) {
-                    result = (rb->data)[rb->head];
-                    rb->head = (rb->head + 1) % rb->cap;
-                    rb->used--;
-                }
-            pthread_mutex_unlock(&rb->buffer_mutex);
-        sem_post(&rb->empty_sem);
-        return result;
-    }
+    if (rb == NULL || rb->rb == NULL) return NULL;
+    return (rb->popfront)(rb->rb);
 }
 
 int rb_drain(RINGBUFFER *rb, void **dest, size_t max) {
-
-	int ret;
-	size_t count;
-	while (rb) {
-		pthread_testcancel();
-		ret = sem_wait(&rb->filled_sem);
-		if (ret == -1 && errno == EINTR) continue;
-		count = 1;
-		while ( count < max) {
-			ret = sem_trywait(&rb->filled_sem);
-			if (ret == -1 && errno == EINTR) continue;
-			if (ret == -1 && errno == EAGAIN) break;
-			count++;
-		}
-		pthread_mutex_lock(&rb->buffer_mutex);
-		for (int i = 0; i < count; i++) {
-			dest[i] = (rb->data)[rb->head];
-			rb->head = (rb->head + 1) % rb->cap;
-			rb->used--;
-		}
-		pthread_mutex_unlock(&rb->buffer_mutex);
-		for (int i = 0; i < count; i++)
-			sem_post(&rb->empty_sem);
-		return count;
-	}
-	return -1;
+    if (rb == NULL || rb->rb == NULL) return -1;
+    return (rb->drain)(rb->rb, dest, max);
 }		

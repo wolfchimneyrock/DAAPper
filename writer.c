@@ -486,9 +486,9 @@ void *writer_thread(void *arg) {
     int cleanup_pop_val;
     pthread_cleanup_push(writer_cleanup, &state);
 // initialize ringbuffer
-    writer_buffer = rb_init(conf.buffercap);
+    writer_buffer = rb_init(conf.buffercap, conf.lock_style);
     if (!writer_buffer) {
-        LOGGER(LOG_ERR, "failed to init writer_buffer[%l]!", conf.buffercap);
+        LOGGER(LOG_ERR, "failed to init writer_buffer[%lu]!", conf.buffercap);
         exit(1);
     }
 // initialize semaphore for database write results
