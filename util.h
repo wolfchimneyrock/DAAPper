@@ -18,7 +18,6 @@ typedef struct app_parent {
 typedef struct app {
     int           header;
     FSW_HANDLE    fd;    
-    int           header;
     int           thread_id;
     app_parent   *parent;
     evbase_t     *base;
