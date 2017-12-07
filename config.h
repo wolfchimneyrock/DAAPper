@@ -11,6 +11,9 @@ typedef struct config_t {
     cfg_bool_t   verbose;
     cfg_bool_t   sequential;
     long   cachestripes;
+    long   chunksize;
+    long   chunkpreload;
+    long   chunkdelay;
     char *name;
     char *root;
     char *dbfile;

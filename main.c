@@ -37,7 +37,7 @@ static void main_cleanup(void *arg) {
     LOGGER(LOG_INFO, "main thread terminated.");
 }
 
-static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:Xy:";
+static const char option_string[]  = "DVc:d:s:p:t:T:B:SC:Xy:k:K:L:";
 static struct option long_options[] = {
     { "daemonize",          no_argument,       0,       'D' },
     { "verbose",            no_argument,       0,       'V' },
@@ -52,6 +52,9 @@ static struct option long_options[] = {
     { "cache-stripes",      required_argument, 0,       'C' },
     { "full-scan",          no_argument,       0,       'X' },
     { "lock-style",         required_argument, 0,       'y' },
+    { "chunk-size",         required_argument, 0,       'k' },
+    { "chunk-preload",      required_argument, 0,       'K' },
+    { "chunk-delay",        required_argument, 0,       'L' },
     { 0, 0, 0, 0 }
 };
 
@@ -82,6 +85,9 @@ int main (int argc, char *argv[]) {
     conf.userid       = NULL;
     conf.fullscan     = -1;
     conf.cachestripes = -1;
+    conf.chunksize    = -1;
+    conf.chunkpreload = -1;
+    conf.chunkdelay   = -1;
     conf.server_name  = hostname;
     conf.library_name = NULL;
     conf.lock_style   = NULL;
@@ -126,6 +132,13 @@ int main (int argc, char *argv[]) {
                           conf.lock_style = strdup(optarg);
                       }
                       break;
+            case 'k': INTARG(conf.chunksize, "chunk-size");
+                      break;
+            case 'K': INTARG(conf.chunkpreload, "chunk-preload");
+                      break;
+            case 'L': INTARG(conf.chunkdelay, "chunk-delay");
+                      break;
+
             default:
                       exit(1);
         }

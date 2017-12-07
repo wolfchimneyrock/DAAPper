@@ -24,10 +24,10 @@
 #include "cache.h"
 #include "stream.h"
 
-#define CHUNK_DELAY  250
-#define CHUNK_SIZE   1024*1024
+//#define CHUNK_DELAY  250
+//#define CHUNK_SIZE   1024*1024
 //#define CHUNK_SIZE   0
-#define PRELOAD_SIZE 1024*1024
+//#define PRELOAD_SIZE 1024*1024
 CACHE *file_cache = NULL;
 
 void *create_segment(int id, void *a) {
@@ -115,12 +115,12 @@ static void stream_item_chunk_cb(evutil_socket_t fd, short events, void *arg) {
 		//LOGGER(LOG_INFO, "    file %d sending chunk %lu", st->id, st->current);
             size_t size = st->size - st->offset;
             st->current++;
-            if (size > CHUNK_SIZE)
-                size = CHUNK_SIZE;
+            if (size > conf.chunksize)
+                size = conf.chunksize;
             evbuffer_add_file_segment(st->buf, st->data, st->offset, size);
             st->offset += size;
             evhtp_send_reply_chunk(st->req, st->buf);
-            schedule_next_chunk(st, CHUNK_DELAY);
+            schedule_next_chunk(st, conf.chunkdelay);
         }
     } else {
         // another request supercedes this one, stop sending chunks and clean up
@@ -182,14 +182,14 @@ void res_stream_item(evhtp_request_t *req, void *a) {
         st->buf = evbuffer_new();
         evbuffer_set_flags(st->buf, EVBUFFER_FLAG_DRAINS_TO_FD);
         int entire = 0;
-        if (CHUNK_SIZE <= 0) {
+        if (conf.chunksize <= 0) {
 		LOGGER(LOG_INFO, "    thread %d sending entire file", st->id);
             entire = 1;
             evbuffer_add_file_segment(req->buffer_out, st->data, st->offset, st->size);
             st->offset += st->size;
         }  
-        else if (PRELOAD_SIZE > 0) {
-            size_t size = PRELOAD_SIZE;
+        else if (conf.chunkpreload > 0) {
+            size_t size = conf.chunkpreload;
             if (st->size <= size) {
                 entire = 1;
                 size = st->size;
