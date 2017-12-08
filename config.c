@@ -48,8 +48,8 @@ void get_config(config_t *config, char *cfg_file) {
     DEFAULT_INT(config->sequential, 0);
     DEFAULT_INT(config->cachestripes, 0);
     DEFAULT_INT(config->chunksize,     256*1024);
-    DEFAULT_INT(config->chunkpreload,  256*1024);
-    DEFAULT_INT(config->chunkdelay,    250);
+    DEFAULT_INT(config->chunkpreload,  config->chunksize * 4);
+    DEFAULT_INT(config->chunkdelay,    config->chunksize / 8192);
     DEFAULT_INT(config->verbose,    0);
 
         // DAAPPER_DBFILE
